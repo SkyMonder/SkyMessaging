@@ -2,12 +2,10 @@
 <html lang="ru">
 <head>
   <meta charset="UTF-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no, viewport-fit=cover">
   <title>SkyMessage</title>
   <link rel="manifest" href="/manifest.json">
   <meta name="theme-color" content="#4a76a8">
-  <meta name="apple-mobile-web-app-capable" content="yes">
-  <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
   <style>
     * {
       box-sizing: border-box;
@@ -16,9 +14,9 @@
     }
 
     body {
-      font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
-      background: #1e1e2f;
-      color: #fff;
+      font-family: system-ui, -apple-system, 'Segoe UI', Roboto, 'Helvetica Neue', sans-serif;
+      background: #0a0a0f;
+      color: #eef;
       height: 100vh;
       overflow: hidden;
     }
@@ -31,15 +29,16 @@
     /* Sidebar */
     .sidebar {
       width: 280px;
-      background: #2c2c3a;
-      border-right: 1px solid #3e3e4e;
+      background: #111114;
+      border-right: 1px solid #222;
       display: flex;
       flex-direction: column;
+      transition: transform 0.2s ease;
     }
 
     .sidebar-header {
       padding: 16px;
-      border-bottom: 1px solid #3e3e4e;
+      border-bottom: 1px solid #222;
       display: flex;
       justify-content: space-between;
       align-items: center;
@@ -57,24 +56,39 @@
       height: 40px;
       border-radius: 50%;
       object-fit: cover;
-      background: #555;
+      background: #2a2a2e;
     }
 
-    .sidebar-search,
-    .sidebar-search-group {
+    .sidebar-search {
       padding: 12px;
-      border-bottom: 1px solid #3e3e4e;
+      border-bottom: 1px solid #222;
     }
 
-    .sidebar-search input,
-    .sidebar-search-group input {
+    .sidebar-search input {
       width: 100%;
-      padding: 8px;
-      border-radius: 20px;
+      padding: 8px 12px;
+      border-radius: 24px;
       border: none;
-      background: #3e3e4e;
+      background: #1e1e24;
       color: white;
       outline: none;
+      font-size: 14px;
+    }
+
+    .sidebar-search-group {
+      padding: 12px;
+      border-bottom: 1px solid #222;
+    }
+
+    .sidebar-search-group input {
+      width: 100%;
+      padding: 8px 12px;
+      border-radius: 24px;
+      border: none;
+      background: #1e1e24;
+      color: white;
+      outline: none;
+      font-size: 14px;
     }
 
     .conversations-list {
@@ -88,16 +102,16 @@
       align-items: center;
       gap: 12px;
       cursor: pointer;
-      transition: background 0.2s;
-      border-bottom: 1px solid #3e3e4e;
+      transition: background 0.1s;
+      border-bottom: 1px solid #1a1a1e;
     }
 
     .conv-item:hover {
-      background: #3e3e4e;
+      background: #1a1a1f;
     }
 
     .conv-item.active {
-      background: #4a4a5a;
+      background: #2a2a32;
     }
 
     .conv-avatar {
@@ -105,7 +119,7 @@
       height: 48px;
       border-radius: 50%;
       object-fit: cover;
-      background: #555;
+      background: #2a2a2e;
     }
 
     .conv-details {
@@ -113,7 +127,7 @@
     }
 
     .conv-name {
-      font-weight: bold;
+      font-weight: 600;
     }
 
     .conv-last-msg {
@@ -129,13 +143,13 @@
       flex: 1;
       display: flex;
       flex-direction: column;
-      background: #1e1e2f;
+      background: #0a0a0f;
     }
 
     .chat-header {
-      padding: 16px;
-      background: #2c2c3a;
-      border-bottom: 1px solid #3e3e4e;
+      padding: 12px 16px;
+      background: #111114;
+      border-bottom: 1px solid #222;
       display: flex;
       justify-content: space-between;
       align-items: center;
@@ -160,8 +174,8 @@
     /* Members panel */
     .members-panel {
       width: 280px;
-      background: #2c2c3a;
-      border-left: 1px solid #3e3e4e;
+      background: #111114;
+      border-left: 1px solid #222;
       display: none;
       flex-direction: column;
       overflow-y: auto;
@@ -173,7 +187,7 @@
 
     .members-header {
       padding: 16px;
-      border-bottom: 1px solid #3e3e4e;
+      border-bottom: 1px solid #222;
       font-weight: bold;
       display: flex;
       justify-content: space-between;
@@ -186,11 +200,11 @@
       align-items: center;
       gap: 12px;
       cursor: pointer;
-      border-bottom: 1px solid #3e3e4e;
+      border-bottom: 1px solid #1a1a1e;
     }
 
     .member-item:hover {
-      background: #3e3e4e;
+      background: #1a1a1f;
     }
 
     /* Messages */
@@ -207,13 +221,13 @@
       max-width: 70%;
       padding: 8px 12px;
       border-radius: 18px;
-      background: #2c2c3a;
+      background: #1e1e24;
       align-self: flex-start;
     }
 
     .message.own {
       align-self: flex-end;
-      background: #4a76a8;
+      background: #2c6e9e;
     }
 
     .message-sender {
@@ -231,7 +245,7 @@
       display: flex;
       align-items: center;
       gap: 8px;
-      background: #3e3e4e;
+      background: #2a2a32;
       padding: 8px;
       border-radius: 12px;
       cursor: pointer;
@@ -246,39 +260,40 @@
 
     /* Input area */
     .input-area {
-      padding: 16px;
-      background: #2c2c3a;
+      padding: 12px;
+      background: #111114;
       display: flex;
       gap: 8px;
       align-items: center;
+      border-top: 1px solid #222;
     }
 
     .input-area input {
       flex: 1;
-      padding: 10px;
+      padding: 10px 14px;
       border-radius: 24px;
       border: none;
-      background: #3e3e4e;
+      background: #1e1e24;
       color: white;
       outline: none;
     }
 
     .input-area button {
-      background: #4a76a8;
+      background: #2c6e9e;
       border: none;
       color: white;
-      width: 36px;
-      height: 36px;
+      width: 40px;
+      height: 40px;
       border-radius: 50%;
       cursor: pointer;
       font-size: 18px;
     }
 
     .file-input-label {
-      background: #4a76a8;
+      background: #2c6e9e;
       border-radius: 50%;
-      width: 36px;
-      height: 36px;
+      width: 40px;
+      height: 40px;
       display: flex;
       align-items: center;
       justify-content: center;
@@ -288,7 +303,7 @@
     .emoji-picker {
       position: absolute;
       bottom: 70px;
-      background: #2c2c3a;
+      background: #1e1e24;
       border-radius: 12px;
       padding: 8px;
       display: none;
@@ -305,7 +320,7 @@
       left: 0;
       width: 100%;
       height: 100%;
-      background: rgba(0, 0, 0, 0.5);
+      background: rgba(0, 0, 0, 0.6);
       display: none;
       justify-content: center;
       align-items: center;
@@ -313,7 +328,7 @@
     }
 
     .modal-content {
-      background: #2c2c3a;
+      background: #111114;
       border-radius: 24px;
       padding: 24px;
       width: 90%;
@@ -323,23 +338,22 @@
     }
 
     .modal-content input,
-    .modal-content textarea,
-    .modal-content select {
+    .modal-content textarea {
       width: 100%;
-      padding: 8px;
+      padding: 10px;
       margin: 8px 0;
-      border-radius: 8px;
+      border-radius: 12px;
       border: none;
-      background: #3e3e4e;
+      background: #1e1e24;
       color: white;
     }
 
     .modal-content button {
       margin-top: 12px;
-      padding: 8px 16px;
-      background: #4a76a8;
+      padding: 10px 16px;
+      background: #2c6e9e;
       border: none;
-      border-radius: 20px;
+      border-radius: 40px;
       color: white;
       cursor: pointer;
     }
@@ -352,9 +366,9 @@
 
     .search-user-item {
       padding: 8px;
-      background: #3e3e4e;
+      background: #1e1e24;
       margin-bottom: 4px;
-      border-radius: 8px;
+      border-radius: 12px;
       cursor: pointer;
       display: flex;
       align-items: center;
@@ -363,7 +377,7 @@
 
     .search-category {
       padding: 8px;
-      background: #4a4a5a;
+      background: #2a2a32;
       font-weight: bold;
       margin-top: 4px;
     }
@@ -375,7 +389,7 @@
       left: 0;
       width: 100%;
       height: 100%;
-      background: rgba(0, 0, 0, 0.8);
+      background: rgba(0, 0, 0, 0.9);
       display: none;
       justify-content: center;
       align-items: center;
@@ -383,11 +397,11 @@
     }
 
     .call-container {
-      background: #2c2c3a;
+      background: #111114;
       border-radius: 24px;
       padding: 20px;
-      width: 80%;
-      max-width: 800px;
+      width: 90%;
+      max-width: 700px;
       text-align: center;
     }
 
@@ -396,6 +410,7 @@
       gap: 16px;
       justify-content: center;
       margin: 16px 0;
+      flex-wrap: wrap;
     }
 
     video {
@@ -421,7 +436,7 @@
 
     .group-settings {
       margin-top: 16px;
-      border-top: 1px solid #3e3e4e;
+      border-top: 1px solid #222;
       padding-top: 16px;
     }
 
@@ -460,34 +475,29 @@
       .sidebar {
         position: fixed;
         left: -280px;
-        transition: left 0.3s;
+        transition: left 0.2s;
         z-index: 1000;
         height: 100%;
       }
-
       .sidebar.show {
         left: 0;
       }
-
       .members-panel {
         position: fixed;
         right: -280px;
-        transition: right 0.3s;
+        transition: right 0.2s;
         z-index: 1000;
         height: 100%;
       }
-
       .members-panel.show {
         right: 0;
       }
-
       .menu-toggle {
         display: block;
       }
-
       .chat-header-left .avatar {
-        width: 32px;
-        height: 32px;
+        width: 36px;
+        height: 36px;
       }
     }
   </style>
@@ -549,128 +559,21 @@
   </div>
 </div>
 
-<!-- Modals -->
-<div id="loginModal" class="modal">
-  <div class="modal-content">
-    <h3>Вход в SkyMessage</h3>
-    <input type="text" id="loginLogin" placeholder="Логин">
-    <input type="password" id="loginPassword" placeholder="Пароль">
-    <button id="doLoginBtn">Войти</button>
-    <button id="toRegisterBtn">Нет аккаунта? Зарегистрироваться</button>
-  </div>
-</div>
-
-<div id="registerModal" class="modal">
-  <div class="modal-content">
-    <h3>Регистрация</h3>
-    <input type="text" id="regLogin" placeholder="Логин">
-    <input type="password" id="regPassword" placeholder="Пароль">
-    <input type="text" id="regDisplayName" placeholder="Имя (необязательно)">
-    <button id="doRegisterBtn">Зарегистрироваться</button>
-    <button id="toLoginBtn">Уже есть аккаунт? Войти</button>
-  </div>
-</div>
-
-<div id="profileModal" class="modal">
-  <div class="modal-content">
-    <h3>Мой профиль</h3>
-    <img id="modalAvatar" width="80" style="border-radius:50%;"><br>
-    <input type="text" id="editDisplayName" placeholder="Имя"><br>
-    <input type="text" id="editStatus" placeholder="Статус"><br>
-    <input type="file" id="avatarUpload" accept="image/*"><br>
-    <button id="saveProfileBtn">Сохранить</button>
-    <button id="closeProfileBtn">Закрыть</button>
-  </div>
-</div>
-
-<div id="userProfileModal" class="modal">
-  <div class="modal-content">
-    <h3>Профиль пользователя</h3>
-    <img id="userProfileAvatar" width="80" style="border-radius:50%;"><br>
-    <div><strong>Имя:</strong> <span id="userProfileName"></span></div>
-    <div><strong>Логин:</strong> <span id="userProfileLogin"></span></div>
-    <div><strong>Статус:</strong> <span id="userProfileStatus"></span></div>
-    <div><strong>Зарегистрирован:</strong> <span id="userProfileCreated"></span></div>
-    <button id="closeUserProfileBtn">Закрыть</button>
-  </div>
-</div>
-
-<div id="groupSettingsModal" class="modal">
-  <div class="modal-content">
-    <h3>Настройки группы</h3>
-    <input type="text" id="groupNameEdit" placeholder="Название группы">
-    <input type="file" id="groupAvatarUpload" accept="image/*">
-    <button id="saveGroupSettingsBtn">Сохранить</button>
-    <h4>Участники</h4>
-    <div id="groupMembersList"></div>
-    <div>
-      <input type="text" id="addMemberLogin" placeholder="Логин для добавления">
-      <button id="addMemberBtn">Добавить</button>
-    </div>
-    <button id="closeGroupSettingsBtn">Закрыть</button>
-  </div>
-</div>
-
-<div id="channelSettingsModal" class="modal">
-  <div class="modal-content">
-    <h3>Настройки канала</h3>
-    <input type="text" id="channelNameEdit" placeholder="Название">
-    <textarea id="channelDescEdit" placeholder="Описание"></textarea>
-    <input type="file" id="channelAvatarUpload" accept="image/*">
-    <button id="saveChannelSettingsBtn">Сохранить</button>
-    <h4>Подписчики</h4>
-    <div id="channelSubscribersList"></div>
-    <button id="closeChannelSettingsBtn">Закрыть</button>
-  </div>
-</div>
-
-<div id="callModal" class="call-modal">
-  <div class="call-container">
-    <h3>Видеозвонок</h3>
-    <div class="video-container">
-      <video id="localVideo" autoplay muted playsinline></video>
-      <video id="remoteVideo" autoplay playsinline></video>
-    </div>
-    <div class="call-controls">
-      <button id="toggleMicBtn">🎤 Выкл</button>
-      <button id="toggleCamBtn">📷 Выкл</button>
-      <button id="hangupBtn">📞 Завершить</button>
-    </div>
-  </div>
-</div>
-
-<div id="newChatModal" class="modal">
-  <div class="modal-content">
-    <h3>Новый чат</h3>
-    <input type="text" id="newChatUser" placeholder="Логин пользователя">
-    <button id="startChatBtn">Начать чат</button>
-    <button id="closeChatModal">Отмена</button>
-  </div>
-</div>
-
-<div id="groupModal" class="modal">
-  <div class="modal-content">
-    <h3>Создать группу</h3>
-    <input type="text" id="groupName" placeholder="Название группы">
-    <input type="text" id="groupMembers" placeholder="Логины участников (через запятую)">
-    <button id="createGroupBtn">Создать</button>
-    <button id="closeGroupModal">Отмена</button>
-  </div>
-</div>
-
-<div id="channelModal" class="modal">
-  <div class="modal-content">
-    <h3>Создать канал</h3>
-    <input type="text" id="channelName" placeholder="Название канала">
-    <textarea id="channelDesc" placeholder="Описание"></textarea>
-    <button id="createChannelBtn">Создать</button>
-    <button id="closeChannelModal">Отмена</button>
-  </div>
-</div>
+<!-- Modals (все стандартные, см. предыдущую версию) -->
+<div id="loginModal" class="modal"><div class="modal-content"><h3>Вход в SkyMessage</h3><input type="text" id="loginLogin" placeholder="Логин"><input type="password" id="loginPassword" placeholder="Пароль"><button id="doLoginBtn">Войти</button><button id="toRegisterBtn">Нет аккаунта? Зарегистрироваться</button></div></div>
+<div id="registerModal" class="modal"><div class="modal-content"><h3>Регистрация</h3><input type="text" id="regLogin" placeholder="Логин"><input type="password" id="regPassword" placeholder="Пароль"><input type="text" id="regDisplayName" placeholder="Имя (необязательно)"><button id="doRegisterBtn">Зарегистрироваться</button><button id="toLoginBtn">Уже есть аккаунт? Войти</button></div></div>
+<div id="profileModal" class="modal"><div class="modal-content"><h3>Мой профиль</h3><img id="modalAvatar" width="80" style="border-radius:50%;"><br><input type="text" id="editDisplayName" placeholder="Имя"><br><input type="text" id="editStatus" placeholder="Статус"><br><input type="file" id="avatarUpload" accept="image/*"><br><button id="saveProfileBtn">Сохранить</button><button id="closeProfileBtn">Закрыть</button></div></div>
+<div id="userProfileModal" class="modal"><div class="modal-content"><h3>Профиль пользователя</h3><img id="userProfileAvatar" width="80"><div><strong>Имя:</strong> <span id="userProfileName"></span></div><div><strong>Логин:</strong> <span id="userProfileLogin"></span></div><div><strong>Статус:</strong> <span id="userProfileStatus"></span></div><div><strong>Зарегистрирован:</strong> <span id="userProfileCreated"></span></div><button id="closeUserProfileBtn">Закрыть</button></div></div>
+<div id="groupSettingsModal" class="modal"><div class="modal-content"><h3>Настройки группы</h3><input type="text" id="groupNameEdit" placeholder="Название"><input type="file" id="groupAvatarUpload" accept="image/*"><button id="saveGroupSettingsBtn">Сохранить</button><h4>Участники</h4><div id="groupMembersList"></div><div><input type="text" id="addMemberLogin" placeholder="Логин для добавления"><button id="addMemberBtn">Добавить</button></div><button id="closeGroupSettingsBtn">Закрыть</button></div></div>
+<div id="channelSettingsModal" class="modal"><div class="modal-content"><h3>Настройки канала</h3><input type="text" id="channelNameEdit" placeholder="Название"><textarea id="channelDescEdit" placeholder="Описание"></textarea><input type="file" id="channelAvatarUpload" accept="image/*"><button id="saveChannelSettingsBtn">Сохранить</button><h4>Подписчики</h4><div id="channelSubscribersList"></div><button id="closeChannelSettingsBtn">Закрыть</button></div></div>
+<div id="callModal" class="call-modal"><div class="call-container"><h3>Видеозвонок</h3><div class="video-container"><video id="localVideo" autoplay muted playsinline></video><video id="remoteVideo" autoplay playsinline></video></div><div class="call-controls"><button id="toggleMicBtn">🎤 Выкл</button><button id="toggleCamBtn">📷 Выкл</button><button id="hangupBtn">📞 Завершить</button></div></div></div>
+<div id="newChatModal" class="modal"><div class="modal-content"><h3>Новый чат</h3><input type="text" id="newChatUser" placeholder="Логин пользователя"><button id="startChatBtn">Начать чат</button><button id="closeChatModal">Отмена</button></div></div>
+<div id="groupModal" class="modal"><div class="modal-content"><h3>Создать группу</h3><input type="text" id="groupName" placeholder="Название группы"><input type="text" id="groupMembers" placeholder="Логины участников (через запятую)"><button id="createGroupBtn">Создать</button><button id="closeGroupModal">Отмена</button></div></div>
+<div id="channelModal" class="modal"><div class="modal-content"><h3>Создать канал</h3><input type="text" id="channelName" placeholder="Название канала"><textarea id="channelDesc" placeholder="Описание"></textarea><button id="createChannelBtn">Создать</button><button id="closeChannelModal">Отмена</button></div></div>
 
 <script src="/socket.io/socket.io.js"></script>
 <script>
-  // Глобальные переменные
+  // ==================== Глобальные переменные ====================
   let currentUser = null;
   let token = localStorage.getItem('token');
   let socket = null;
@@ -680,23 +583,23 @@
   let usersCache = {};
   let groupsCache = {};
   let channelsCache = {};
-  let currentMessages = []; // для сохранения сообщений текущего чата
+  let currentMessages = [];
 
-  const emojis = ['😀','😃','😄','😁','😆','😅','😂','🤣','😊','😇','😍','🥰','😘','😗','😙','😚','🙂','🤗','🤩','🤔','🤨','😐','😑','😶','😏','😒','🙄','😬','🤥','😌','😔','😪','🤤','😴','😷','🤒','🤕','🤢','🤮','🤧','🥵','🥶','🥴','😵','🤯','🤠','🥳','😎','🤓','🧐','😕','😟','🙁','☹️','😮','😯','😲','😳','🥺','😦','😧','😨','😰','😥','😢','😭','😱','😖','😣','😞','😓','😩','😫','🥱','😤','😡','😠','🤬','😈','👿','💀','👻','💩','🤡','👹','👺','🤖','🎃','😺','😸','😹','😻','😼','😽','🙀','😿','😾'];
-
-  // Helper functions
+  // ==================== Вспомогательные функции ====================
   function showModal(modalId) { document.getElementById(modalId).style.display = 'flex'; }
   function hideModal(modalId) { document.getElementById(modalId).style.display = 'none'; }
+  function escapeHtml(str) { return String(str).replace(/[&<>]/g, function(m) { if(m === '&') return '&amp;'; if(m === '<') return '&lt;'; if(m === '>') return '&gt;'; return m; }); }
 
   function updateProfileUI() {
     if (!currentUser) return;
     document.getElementById('currentDisplayName').innerText = currentUser.displayName;
-    document.getElementById('currentAvatar').src = currentUser.avatar || 'data:image/svg+xml,%3Csvg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="gray"%3E%3Cpath d="M12 12c2.21 0 4-1.79 4-4s-1.79-4-4-4-4 1.79-4 4 1.79 4 4 4zm0 2c-2.67 0-8 1.34-8 4v2h16v-2c0-2.66-5.33-4-8-4z"/%3E%3C/svg%3E';
+    document.getElementById('currentAvatar').src = currentUser.avatar || '';
     document.getElementById('modalAvatar').src = currentUser.avatar || '';
     document.getElementById('editDisplayName').value = currentUser.displayName;
     document.getElementById('editStatus').value = currentUser.status || '';
   }
 
+  // ==================== API вызовы ====================
   async function login(login, password) {
     const res = await fetch('/login', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ login, password }) });
     if (!res.ok) { alert('Неверный логин или пароль'); return false; }
@@ -735,17 +638,18 @@
     }
   }
 
+  // ==================== Socket.io ====================
   function connectSocket() {
     if (socket) socket.disconnect();
     socket = io({ auth: { token } });
-    socket.on('connect', () => console.log('Socket connected УРААААААААААААААААААААААААААААААААААААААА'));
+    socket.on('connect', () => console.log('Socket connected'));
     socket.on('conversations', (convs) => renderConversations(convs));
     socket.on('new-message', ({ convId, message }) => {
       if (currentConvId === convId) {
         currentMessages.push(message);
         appendMessage(message, message.senderId === currentUser.id);
       }
-      loadConversations();
+      loadConversations(); // обновить последнее сообщение в списке
     });
     socket.on('profile-updated', (data) => {
       if (data.userId === currentUser.id) { currentUser.displayName = data.displayName; currentUser.avatar = data.avatar; currentUser.status = data.status; updateProfileUI(); }
@@ -771,7 +675,6 @@
     socket.on('call-answered', ({ from, answer }) => handleRemoteAnswer(answer));
     socket.on('ice-candidate', ({ from, candidate }) => { if (currentCall.peerConnection) currentCall.peerConnection.addIceCandidate(new RTCIceCandidate(candidate)); });
     socket.on('call-ended', () => endCall());
-    socket.on('media-toggled', ({ type, enabled }) => { /* опционально */ });
   }
 
   async function loadConversations() {
@@ -787,7 +690,7 @@
       const div = document.createElement('div');
       div.className = 'conv-item';
       if (currentConvId === conv.id) div.classList.add('active');
-      div.innerHTML = '<img class="conv-avatar" src="' + (conv.avatar || 'data:image/svg+xml,%3Csvg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="gray"%3E%3Cpath d="M12 12c2.21 0 4-1.79 4-4s-1.79-4-4-4-4 1.79-4 4 1.79 4 4 4zm0 2c-2.67 0-8 1.34-8 4v2h16v-2c0-2.66-5.33-4-8-4z"/%3E%3C/svg%3E') + '">' +
+      div.innerHTML = '<img class="conv-avatar" src="' + (conv.avatar || '') + '">' +
         '<div class="conv-details">' +
         '<div class="conv-name">' + escapeHtml(conv.name) + '</div>' +
         '<div class="conv-last-msg">' + (conv.lastMessage ? (conv.lastMessage.type === 'file' ? '📎 Файл' : conv.lastMessage.content) : '') + '</div>' +
@@ -801,7 +704,7 @@
     currentConvId = conv.id;
     currentConvType = conv.type;
     document.getElementById('chatName').innerText = conv.name;
-    document.getElementById('chatAvatar').src = conv.avatar || 'data:image/svg+xml,%3Csvg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="gray"%3E%3Cpath d="M12 12c2.21 0 4-1.79 4-4s-1.79-4-4-4-4 1.79-4 4 1.79 4 4 4zm0 2c-2.67 0-8 1.34-8 4v2h16v-2c0-2.66-5.33-4-8-4z"/%3E%3C/svg%3E';
+    document.getElementById('chatAvatar').src = conv.avatar || '';
     document.getElementById('settingsBtn').style.display = (conv.type === 'group' || conv.type === 'channel') ? 'inline-block' : 'none';
     const messagesContainer = document.getElementById('messagesContainer');
     messagesContainer.innerHTML = '<div>Загрузка...</div>';
@@ -827,9 +730,7 @@
         group.members.forEach(member => {
           const div = document.createElement('div');
           div.className = 'member-item';
-          div.innerHTML = `<img class="avatar" src="${member.avatar || ''}" style="width:32px;height:32px;"> 
-                          <span>${escapeHtml(member.displayName)}</span>
-                          <span style="font-size:12px;color:#aaa;">${member.status}</span>`;
+          div.innerHTML = `<img class="avatar" src="${member.avatar || ''}" style="width:32px;height:32px;"> <span>${escapeHtml(member.displayName)}</span>`;
           div.onclick = () => showUserProfile(member.id);
           membersList.appendChild(div);
         });
@@ -854,9 +755,7 @@
         channel.subscribers.forEach(sub => {
           const div = document.createElement('div');
           div.className = 'member-item';
-          div.innerHTML = `<img class="avatar" src="${sub.avatar || ''}" style="width:32px;height:32px;"> 
-                          <span>${escapeHtml(sub.displayName)}</span>
-                          <span style="font-size:12px;color:#aaa;">${sub.status}</span>`;
+          div.innerHTML = `<img class="avatar" src="${sub.avatar || ''}" style="width:32px;height:32px;"> <span>${escapeHtml(sub.displayName)}</span>`;
           div.onclick = () => showUserProfile(sub.id);
           membersList.appendChild(div);
         });
@@ -939,8 +838,7 @@
     channel.subscribers.forEach(sub => {
       const div = document.createElement('div');
       div.style.display = 'flex'; div.style.alignItems = 'center'; div.style.gap = '8px'; div.style.margin = '8px 0';
-      div.innerHTML = `<img class="avatar" src="${sub.avatar}" style="width:32px;height:32px;"> 
-                      <span>${escapeHtml(sub.displayName)}</span>`;
+      div.innerHTML = `<img class="avatar" src="${sub.avatar}" style="width:32px;height:32px;"> <span>${escapeHtml(sub.displayName)}</span>`;
       document.getElementById('channelSubscribersList').appendChild(div);
     });
     document.getElementById('saveChannelSettingsBtn').onclick = async () => {
@@ -996,7 +894,6 @@
     document.getElementById('messagesContainer').scrollTop = document.getElementById('messagesContainer').scrollHeight;
   }
 
-  // Функция скачивания файла
   function downloadFile(msgId) {
     const msg = currentMessages.find(m => m.id === msgId);
     if (msg && msg.type === 'file') {
@@ -1076,13 +973,12 @@
     document.getElementById(type === 'audio' ? 'toggleMicBtn' : 'toggleCamBtn').innerText = type === 'audio' ? (enabled ? '🎤 Выкл' : '🎤 Вкл') : (enabled ? '📷 Выкл' : '📷 Вкл');
   }
 
-  function escapeHtml(str) { return str.replace(/[&<>]/g, function(m) { if(m === '&') return '&amp;'; if(m === '<') return '&lt;'; if(m === '>') return '&gt;'; return m; }); }
-
-  // UI Event listeners
+  // ==================== UI обработчики ====================
   document.getElementById('sendBtn').onclick = () => sendMessage(document.getElementById('messageInput').value);
   document.getElementById('messageInput').addEventListener('keypress', (e) => { if (e.key === 'Enter') sendMessage(e.target.value); });
   document.getElementById('fileInput').onchange = (e) => { if (e.target.files[0]) sendMessage('', e.target.files[0]); e.target.value = ''; };
   document.getElementById('emojiBtn').onclick = () => { const picker = document.getElementById('emojiPicker'); picker.style.display = picker.style.display === 'grid' ? 'none' : 'grid'; };
+  const emojis = ['😀','😃','😄','😁','😆','😅','😂','🤣','😊','😇','😍','🥰','😘','😗','😙','😚','🙂','🤗','🤩','🤔','🤨','😐','😑','😶','😏','😒','🙄','😬','🤥','😌','😔','😪','🤤','😴','😷','🤒','🤕','🤢','🤮','🤧','🥵','🥶','🥴','😵','🤯','🤠','🥳','😎','🤓','🧐','😕','😟','🙁','☹️','😮','😯','😲','😳','🥺','😦','😧','😨','😰','😥','😢','😭','😱','😖','😣','😞','😓','😩','😫','🥱','😤','😡','😠','🤬','😈','👿','💀','👻','💩','🤡','👹','👺','🤖','🎃','😺','😸','😹','😻','😼','😽','🙀','😿','😾'];
   emojis.forEach(emoji => { const btn = document.createElement('button'); btn.innerText = emoji; btn.style.fontSize = '24px'; btn.onclick = () => { document.getElementById('messageInput').value += emoji; document.getElementById('emojiPicker').style.display = 'none'; }; document.getElementById('emojiPicker').appendChild(btn); });
   document.getElementById('callBtn').onclick = () => { if (currentConvType === 'private') startCall(currentConvId.split('_').find(id => id !== currentUser.id)); else alert('Звонки только в личных чатах'); };
   document.getElementById('hangupBtn').onclick = endCall;
@@ -1108,7 +1004,7 @@
   document.getElementById('closeUserProfileBtn').onclick = () => hideModal('userProfileModal');
   document.getElementById('membersBtn').onclick = () => document.getElementById('membersPanel').classList.toggle('show');
   document.getElementById('closeMembersPanel').onclick = () => document.getElementById('membersPanel').classList.remove('show');
-  document.getElementById('chatInfoBtn').onclick = () => { if (window.innerWidth <= 768) { document.querySelector('.sidebar').classList.remove('show'); } if (currentConvType === 'group' || currentConvType === 'channel') document.getElementById('membersPanel').classList.toggle('show'); };
+  document.getElementById('chatInfoBtn').onclick = () => { if (window.innerWidth <= 768) document.querySelector('.sidebar').classList.remove('show'); if (currentConvType === 'group' || currentConvType === 'channel') document.getElementById('membersPanel').classList.toggle('show'); };
   document.getElementById('settingsBtn').onclick = () => { if (currentConvType === 'group') refreshMembersPanel(); else if (currentConvType === 'channel') refreshMembersPanel(); };
   document.getElementById('newChatBtn').onclick = () => showModal('newChatModal');
   document.getElementById('startChatBtn').onclick = async () => {
@@ -1150,6 +1046,8 @@
   document.getElementById('closeChannelModal').onclick = () => hideModal('channelModal');
   document.getElementById('closeGroupSettingsBtn').onclick = () => hideModal('groupSettingsModal');
   document.getElementById('closeChannelSettingsBtn').onclick = () => hideModal('channelSettingsModal');
+  document.getElementById('menuToggle').addEventListener('click', () => document.querySelector('.sidebar').classList.toggle('show'));
+  document.getElementById('messagesContainer').addEventListener('click', (e) => { const fileDiv = e.target.closest('.message-file'); if (fileDiv) { const msgId = fileDiv.dataset.msgid; if (msgId) downloadFile(msgId); } });
 
   // Поиск пользователей
   let searchTimeout;
@@ -1206,9 +1104,7 @@
               } else {
                 if (confirm(`Вы не состоите в группе "${g.name}". Вступить?`)) {
                   fetch('/group/join', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ token, groupId: g.id }) })
-                    .then(() => {
-                      openConversation({ id: g.id, type: 'group', name: g.name, avatar: g.avatar });
-                    });
+                    .then(() => openConversation({ id: g.id, type: 'group', name: g.name, avatar: g.avatar }));
                 }
               }
               container.style.display = 'none';
@@ -1229,9 +1125,7 @@
               } else {
                 if (confirm(`Подписаться на канал "${c.name}"?`)) {
                   fetch('/channel/subscribe', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ token, channelId: c.id }) })
-                    .then(() => {
-                      openConversation({ id: c.id, type: 'channel', name: c.name, avatar: c.avatar });
-                    });
+                    .then(() => openConversation({ id: c.id, type: 'channel', name: c.name, avatar: c.avatar }));
                 }
               }
               container.style.display = 'none';
@@ -1245,47 +1139,14 @@
     }, 300);
   });
 
-  // Мобильная навигация
-  document.getElementById('menuToggle').addEventListener('click', () => {
-    document.querySelector('.sidebar').classList.toggle('show');
-  });
-  document.getElementById('closeMembersPanel').addEventListener('click', () => {
-    document.getElementById('membersPanel').classList.remove('show');
-  });
-  document.getElementById('chatInfoBtn').addEventListener('click', () => {
-    if (window.innerWidth <= 768) {
-      document.querySelector('.sidebar').classList.remove('show');
-    }
-    if (currentConvType === 'group' || currentConvType === 'channel') {
-      document.getElementById('membersPanel').classList.toggle('show');
-    }
-  });
-
-  // Обработчик кликов по файлам для скачивания
-  document.getElementById('messagesContainer').addEventListener('click', (e) => {
-    const fileDiv = e.target.closest('.message-file');
-    if (fileDiv) {
-      const msgId = fileDiv.dataset.msgid;
-      if (msgId) downloadFile(msgId);
-    }
-  });
-
-  // Auth modals
+  // Авторизация
   document.getElementById('doLoginBtn').onclick = () => login(document.getElementById('loginLogin').value, document.getElementById('loginPassword').value);
   document.getElementById('toRegisterBtn').onclick = () => { hideModal('loginModal'); showModal('registerModal'); };
   document.getElementById('doRegisterBtn').onclick = () => register(document.getElementById('regLogin').value, document.getElementById('regPassword').value, document.getElementById('regDisplayName').value);
   document.getElementById('toLoginBtn').onclick = () => { hideModal('registerModal'); showModal('loginModal'); };
+  document.getElementById('logoutBtn').onclick = () => { localStorage.removeItem('token'); token = null; if (socket) socket.disconnect(); currentUser = null; showModal('loginModal'); };
 
-  // Logout
-  document.getElementById('logoutBtn').onclick = () => {
-    localStorage.removeItem('token');
-    token = null;
-    if (socket) socket.disconnect();
-    currentUser = null;
-    showModal('loginModal');
-  };
-
-  // Initialize
+  // Инициализация
   (async () => {
     if (token) {
       const user = await loadCurrentUser();
@@ -1299,7 +1160,6 @@
       showModal('loginModal');
     }
   })();
-}
 </script>
 </body>
 </html>
