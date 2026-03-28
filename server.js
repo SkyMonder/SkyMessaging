@@ -12,8 +12,8 @@ const io = new Server(server, {
 });
 
 app.use(cors());
-app.use(express.json({ limit: '10mb' }));
-app.use(express.urlencoded({ extended: true, limit: '10mb' }));
+app.use(express.json({ limit: '50mb' }));
+app.use(express.urlencoded({ extended: true, limit: '50mb' }));
 app.use(express.static(path.join(__dirname, 'public')));
 
 // In-memory storage
@@ -75,7 +75,7 @@ function initDemoData() {
 }
 initDemoData();
 
-// API endpoints
+// ------------------- API -------------------
 app.post('/register', (req, res) => {
   const { login, password, displayName } = req.body;
   if (!login || !password) return res.status(400).json({ error: 'Login and password required' });
@@ -124,6 +124,7 @@ app.get('/user/:id', (req, res) => {
   res.json({ id: user.id, login: user.login, displayName: user.displayName, avatar: user.avatar, status: user.status, createdAt: user.createdAt });
 });
 
+// Groups
 app.post('/create-group', (req, res) => {
   const { token, name, memberIds } = req.body;
   const userId = sessions.get(token);
@@ -141,6 +142,89 @@ app.post('/create-group', (req, res) => {
   res.json({ success: true, group });
 });
 
+app.get('/group/:id', (req, res) => {
+  const group = groups.get(req.params.id);
+  if (!group) return res.status(404).json({ error: 'Not found' });
+  const members = Array.from(group.members).map(id => users.get(id)).filter(u => u);
+  res.json({ ...group, members });
+});
+
+app.post('/group/update', (req, res) => {
+  const { token, groupId, name, avatar } = req.body;
+  const userId = sessions.get(token);
+  if (!userId) return res.status(401).json({ error: 'Unauthorized' });
+  const group = groups.get(groupId);
+  if (!group) return res.status(404).json({ error: 'Group not found' });
+  if (!group.admins.has(userId)) return res.status(403).json({ error: 'Not admin' });
+  if (name) group.name = name;
+  if (avatar !== undefined) group.avatar = avatar;
+  groups.set(groupId, group);
+  group.members.forEach(mid => {
+    const sockets = [...io.sockets.sockets.values()].filter(s => s.userId === mid);
+    sockets.forEach(s => s.emit('group-updated', group));
+  });
+  res.json({ success: true, group });
+});
+
+app.post('/group/add-member', (req, res) => {
+  const { token, groupId, userIdToAdd } = req.body;
+  const userId = sessions.get(token);
+  if (!userId) return res.status(401).json({ error: 'Unauthorized' });
+  const group = groups.get(groupId);
+  if (!group) return res.status(404).json({ error: 'Group not found' });
+  if (!group.admins.has(userId)) return res.status(403).json({ error: 'Not admin' });
+  if (group.members.has(userIdToAdd)) return res.json({ success: true, message: 'Already member' });
+  group.members.add(userIdToAdd);
+  groups.set(groupId, group);
+  group.members.forEach(mid => {
+    const sockets = [...io.sockets.sockets.values()].filter(s => s.userId === mid);
+    sockets.forEach(s => s.emit('group-updated', group));
+  });
+  res.json({ success: true });
+});
+
+app.post('/group/remove-member', (req, res) => {
+  const { token, groupId, userIdToRemove } = req.body;
+  const userId = sessions.get(token);
+  if (!userId) return res.status(401).json({ error: 'Unauthorized' });
+  const group = groups.get(groupId);
+  if (!group) return res.status(404).json({ error: 'Group not found' });
+  if (!group.admins.has(userId) && userId !== userIdToRemove) return res.status(403).json({ error: 'Not admin' });
+  if (!group.members.has(userIdToRemove)) return res.json({ success: true, message: 'Not a member' });
+  group.members.delete(userIdToRemove);
+  group.admins.delete(userIdToRemove);
+  if (group.ownerId === userIdToRemove) {
+    // transfer ownership to another admin
+    const newOwner = group.admins.values().next().value || [...group.members][0];
+    if (newOwner) group.ownerId = newOwner;
+  }
+  groups.set(groupId, group);
+  group.members.forEach(mid => {
+    const sockets = [...io.sockets.sockets.values()].filter(s => s.userId === mid);
+    sockets.forEach(s => s.emit('group-updated', group));
+  });
+  res.json({ success: true });
+});
+
+app.post('/group/set-admin', (req, res) => {
+  const { token, groupId, userIdToSet, isAdmin } = req.body;
+  const userId = sessions.get(token);
+  if (!userId) return res.status(401).json({ error: 'Unauthorized' });
+  const group = groups.get(groupId);
+  if (!group) return res.status(404).json({ error: 'Group not found' });
+  if (!group.admins.has(userId)) return res.status(403).json({ error: 'Not admin' });
+  if (!group.members.has(userIdToSet)) return res.status(400).json({ error: 'Not a member' });
+  if (isAdmin) group.admins.add(userIdToSet);
+  else group.admins.delete(userIdToSet);
+  groups.set(groupId, group);
+  group.members.forEach(mid => {
+    const sockets = [...io.sockets.sockets.values()].filter(s => s.userId === mid);
+    sockets.forEach(s => s.emit('group-updated', group));
+  });
+  res.json({ success: true });
+});
+
+// Channels
 app.post('/create-channel', (req, res) => {
   const { token, name, description } = req.body;
   const userId = sessions.get(token);
@@ -156,18 +240,57 @@ app.post('/create-channel', (req, res) => {
   res.json({ success: true, channel });
 });
 
-app.post('/group/add-member', (req, res) => {
-  const { token, groupId, userIdToAdd } = req.body;
+app.get('/channel/:id', (req, res) => {
+  const channel = channels.get(req.params.id);
+  if (!channel) return res.status(404).json({ error: 'Not found' });
+  const subscribers = Array.from(channel.subscribers).map(id => users.get(id)).filter(u => u);
+  res.json({ ...channel, subscribers });
+});
+
+app.post('/channel/subscribe', (req, res) => {
+  const { token, channelId } = req.body;
   const userId = sessions.get(token);
   if (!userId) return res.status(401).json({ error: 'Unauthorized' });
-  const group = groups.get(groupId);
-  if (!group) return res.status(404).json({ error: 'Group not found' });
-  if (!group.admins.has(userId)) return res.status(403).json({ error: 'Not admin' });
-  group.members.add(userIdToAdd);
-  groups.set(groupId, group);
-  group.members.forEach(mid => {
-    const sockets = [...io.sockets.sockets.values()].filter(s => s.userId === mid);
-    sockets.forEach(s => s.emit('group-updated', group));
+  const channel = channels.get(channelId);
+  if (!channel) return res.status(404).json({ error: 'Channel not found' });
+  channel.subscribers.add(userId);
+  channels.set(channelId, channel);
+  channel.subscribers.forEach(sid => {
+    const sockets = [...io.sockets.sockets.values()].filter(s => s.userId === sid);
+    sockets.forEach(s => s.emit('channel-updated', channel));
+  });
+  res.json({ success: true });
+});
+
+app.post('/channel/unsubscribe', (req, res) => {
+  const { token, channelId } = req.body;
+  const userId = sessions.get(token);
+  if (!userId) return res.status(401).json({ error: 'Unauthorized' });
+  const channel = channels.get(channelId);
+  if (!channel) return res.status(404).json({ error: 'Channel not found' });
+  channel.subscribers.delete(userId);
+  channels.set(channelId, channel);
+  channel.subscribers.forEach(sid => {
+    const sockets = [...io.sockets.sockets.values()].filter(s => s.userId === sid);
+    sockets.forEach(s => s.emit('channel-updated', channel));
+  });
+  res.json({ success: true });
+});
+
+app.post('/channel/update', (req, res) => {
+  const { token, channelId, name, description, avatar } = req.body;
+  const userId = sessions.get(token);
+  if (!userId) return res.status(401).json({ error: 'Unauthorized' });
+  const channel = channels.get(channelId);
+  if (!channel) return res.status(404).json({ error: 'Channel not found' });
+  if (channel.ownerId !== userId) return res.status(403).json({ error: 'Not owner' });
+  if (name) channel.name = name;
+  if (description !== undefined) channel.description = description;
+  if (avatar !== undefined) channel.avatar = avatar;
+  channels.set(channelId, channel);
+  channel.subscribers.forEach(sid => {
+    const sockets = [...io.sockets.sockets.values()].filter(s => s.userId === sid);
+    sockets.forEach(s => s.emit('channel-updated', channel));
   });
   res.json({ success: true });
 });
@@ -188,18 +311,7 @@ app.get('/my-channels', (req, res) => {
   res.json(userChannels);
 });
 
-app.post('/channel/subscribe', (req, res) => {
-  const { token, channelId } = req.body;
-  const userId = sessions.get(token);
-  if (!userId) return res.status(401).json({ error: 'Unauthorized' });
-  const channel = channels.get(channelId);
-  if (!channel) return res.status(404).json({ error: 'Channel not found' });
-  channel.subscribers.add(userId);
-  channels.set(channelId, channel);
-  res.json({ success: true });
-});
-
-// Socket.io
+// ------------------- Socket.io -------------------
 io.use((socket, next) => {
   const token = socket.handshake.auth.token;
   if (!token) return next(new Error('Authentication required'));
@@ -262,6 +374,7 @@ io.on('connection', (socket) => {
     callback(msgs.slice(-100));
   });
 
+  // WebRTC signaling
   socket.on('call-user', ({ targetUserId, offer }) => {
     io.to(`user:${targetUserId}`).emit('incoming-call', { from: userId, offer });
   });
