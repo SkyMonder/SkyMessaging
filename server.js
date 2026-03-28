@@ -4,6 +4,7 @@ const { Server } = require('socket.io');
 const cors = require('cors');
 const path = require('path');
 const crypto = require('crypto');
+const fs = require('fs');
 
 const app = express();
 const server = http.createServer(app);
@@ -17,11 +18,42 @@ app.use(express.urlencoded({ extended: true, limit: '50mb' }));
 app.use(express.static(path.join(__dirname, 'public')));
 
 // In-memory storage
-const users = new Map();       // userId -> { id, login, password, displayName, avatar, status, createdAt }
-const sessions = new Map();    // token -> userId
-const messages = new Map();    // convId -> array of messages
-const groups = new Map();      // groupId -> { id, name, avatar, ownerId, members: Set, admins: Set, createdAt }
-const channels = new Map();    // channelId -> { id, name, description, avatar, ownerId, subscribers: Set, createdAt }
+let users = new Map();       // userId -> object
+let sessions = new Map();    // token -> userId
+let messages = new Map();    // convId -> array of messages
+let groups = new Map();      // groupId -> object
+let channels = new Map();    // channelId -> object
+
+const DATA_FILE = './data.json';
+
+// Сохранение данных в файл
+function saveData() {
+  const data = {
+    users: Array.from(users.entries()),
+    sessions: Array.from(sessions.entries()),
+    messages: Array.from(messages.entries()),
+    groups: Array.from(groups.entries()),
+    channels: Array.from(channels.entries())
+  };
+  fs.writeFileSync(DATA_FILE, JSON.stringify(data, null, 2));
+}
+
+// Загрузка данных из файла
+function loadData() {
+  if (fs.existsSync(DATA_FILE)) {
+    const raw = fs.readFileSync(DATA_FILE);
+    const data = JSON.parse(raw);
+    users = new Map(data.users);
+    sessions = new Map(data.sessions);
+    messages = new Map(data.messages);
+    groups = new Map(data.groups);
+    channels = new Map(data.channels);
+    console.log('Data loaded from file');
+  } else {
+    initDemoData();
+    saveData();
+  }
+}
 
 function generateId() {
   return crypto.randomBytes(16).toString('hex');
@@ -34,6 +66,7 @@ function getPrivateConversationId(user1, user2) {
 function saveMessage(convId, message) {
   if (!messages.has(convId)) messages.set(convId, []);
   messages.get(convId).push(message);
+  saveData();
 }
 
 // Demo data
@@ -73,7 +106,6 @@ function initDemoData() {
   saveMessage(convId, { id: generateId(), senderId: aliceId, type: 'text', content: 'Hi Bob!', timestamp: Date.now() });
   saveMessage(convId, { id: generateId(), senderId: bobId, type: 'text', content: 'Hello Alice!', timestamp: Date.now() });
 }
-initDemoData();
 
 // ------------------- API -------------------
 app.post('/register', (req, res) => {
@@ -82,6 +114,7 @@ app.post('/register', (req, res) => {
   if ([...users.values()].some(u => u.login === login)) return res.status(400).json({ error: 'User already exists' });
   const id = generateId();
   users.set(id, { id, login, password, displayName: displayName || login, avatar: '', status: 'online', createdAt: new Date().toISOString() });
+  saveData();
   res.json({ success: true, userId: id });
 });
 
@@ -91,6 +124,7 @@ app.post('/login', (req, res) => {
   if (!user) return res.status(401).json({ error: 'Invalid credentials' });
   const token = generateId();
   sessions.set(token, user.id);
+  saveData();
   res.json({ token, user: { id: user.id, login: user.login, displayName: user.displayName, avatar: user.avatar, status: user.status } });
 });
 
@@ -158,6 +192,7 @@ app.post('/update-profile', (req, res) => {
   if (avatar !== undefined) user.avatar = avatar;
   if (status) user.status = status;
   users.set(userId, user);
+  saveData();
   const sockets = [...io.sockets.sockets.values()].filter(s => s.userId === userId);
   sockets.forEach(s => s.emit('profile-updated', { userId, displayName: user.displayName, avatar: user.avatar, status: user.status }));
   res.json({ success: true, user: { id: user.id, login: user.login, displayName: user.displayName, avatar: user.avatar, status: user.status } });
@@ -180,6 +215,7 @@ app.post('/create-group', (req, res) => {
     members: new Set([userId, ...(memberIds || [])]), admins: new Set([userId]), createdAt: new Date().toISOString()
   };
   groups.set(groupId, group);
+  saveData();
   group.members.forEach(mid => {
     const sockets = [...io.sockets.sockets.values()].filter(s => s.userId === mid);
     sockets.forEach(s => s.emit('group-created', group));
@@ -205,6 +241,7 @@ app.post('/group/update', (req, res) => {
   if (name) group.name = name;
   if (avatar !== undefined) group.avatar = avatar;
   groups.set(groupId, group);
+  saveData();
   group.members.forEach(mid => {
     const sockets = [...io.sockets.sockets.values()].filter(s => s.userId === mid);
     sockets.forEach(s => s.emit('group-updated', group));
@@ -222,6 +259,7 @@ app.post('/group/add-member', (req, res) => {
   if (group.members.has(userIdToAdd)) return res.json({ success: true, message: 'Already member' });
   group.members.add(userIdToAdd);
   groups.set(groupId, group);
+  saveData();
   group.members.forEach(mid => {
     const sockets = [...io.sockets.sockets.values()].filter(s => s.userId === mid);
     sockets.forEach(s => s.emit('group-updated', group));
@@ -244,6 +282,7 @@ app.post('/group/remove-member', (req, res) => {
     if (newOwner) group.ownerId = newOwner;
   }
   groups.set(groupId, group);
+  saveData();
   group.members.forEach(mid => {
     const sockets = [...io.sockets.sockets.values()].filter(s => s.userId === mid);
     sockets.forEach(s => s.emit('group-updated', group));
@@ -262,6 +301,7 @@ app.post('/group/set-admin', (req, res) => {
   if (isAdmin) group.admins.add(userIdToSet);
   else group.admins.delete(userIdToSet);
   groups.set(groupId, group);
+  saveData();
   group.members.forEach(mid => {
     const sockets = [...io.sockets.sockets.values()].filter(s => s.userId === mid);
     sockets.forEach(s => s.emit('group-updated', group));
@@ -278,6 +318,7 @@ app.post('/group/join', (req, res) => {
   if (group.members.has(userId)) return res.json({ success: true, message: 'Already member' });
   group.members.add(userId);
   groups.set(groupId, group);
+  saveData();
   group.members.forEach(mid => {
     const sockets = [...io.sockets.sockets.values()].filter(s => s.userId === mid);
     sockets.forEach(s => s.emit('group-updated', group));
@@ -296,6 +337,7 @@ app.post('/create-channel', (req, res) => {
     subscribers: new Set([userId]), createdAt: new Date().toISOString()
   };
   channels.set(channelId, channel);
+  saveData();
   const sockets = [...io.sockets.sockets.values()].filter(s => s.userId === userId);
   sockets.forEach(s => s.emit('channel-created', channel));
   res.json({ success: true, channel: { ...channel, subscribers: Array.from(channel.subscribers) } });
@@ -316,6 +358,7 @@ app.post('/channel/subscribe', (req, res) => {
   if (!channel) return res.status(404).json({ error: 'Channel not found' });
   channel.subscribers.add(userId);
   channels.set(channelId, channel);
+  saveData();
   channel.subscribers.forEach(sid => {
     const sockets = [...io.sockets.sockets.values()].filter(s => s.userId === sid);
     sockets.forEach(s => s.emit('channel-updated', channel));
@@ -331,6 +374,7 @@ app.post('/channel/unsubscribe', (req, res) => {
   if (!channel) return res.status(404).json({ error: 'Channel not found' });
   channel.subscribers.delete(userId);
   channels.set(channelId, channel);
+  saveData();
   channel.subscribers.forEach(sid => {
     const sockets = [...io.sockets.sockets.values()].filter(s => s.userId === sid);
     sockets.forEach(s => s.emit('channel-updated', channel));
@@ -349,6 +393,7 @@ app.post('/channel/update', (req, res) => {
   if (description !== undefined) channel.description = description;
   if (avatar !== undefined) channel.avatar = avatar;
   channels.set(channelId, channel);
+  saveData();
   channel.subscribers.forEach(sid => {
     const sockets = [...io.sockets.sockets.values()].filter(s => s.userId === sid);
     sockets.forEach(s => s.emit('channel-updated', channel));
@@ -458,4 +503,5 @@ io.on('connection', (socket) => {
 });
 
 const PORT = process.env.PORT || 3000;
+loadData();
 server.listen(PORT, () => console.log(`SkyMessage running on http://localhost:${PORT}`));
