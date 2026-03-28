@@ -5,16 +5,18 @@
   <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
   <title>SkyMessage</title>
   <style>
-    /* Все стили из предыдущей версии, они остаются без изменений */
     * { box-sizing: border-box; margin: 0; padding: 0; }
     body { font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif; background: #1e1e2f; color: #fff; height: 100vh; overflow: hidden; }
     #app { display: flex; height: 100vh; }
+    /* Sidebar */
     .sidebar { width: 280px; background: #2c2c3a; border-right: 1px solid #3e3e4e; display: flex; flex-direction: column; }
     .sidebar-header { padding: 16px; border-bottom: 1px solid #3e3e4e; display: flex; justify-content: space-between; align-items: center; }
     .user-info { display: flex; align-items: center; gap: 12px; cursor: pointer; }
     .avatar { width: 40px; height: 40px; border-radius: 50%; object-fit: cover; background: #555; }
     .sidebar-search { padding: 12px; border-bottom: 1px solid #3e3e4e; }
     .sidebar-search input { width: 100%; padding: 8px; border-radius: 20px; border: none; background: #3e3e4e; color: white; outline: none; }
+    .sidebar-search-group { padding: 12px; border-bottom: 1px solid #3e3e4e; }
+    .sidebar-search-group input { width: 100%; padding: 8px; border-radius: 20px; border: none; background: #3e3e4e; color: white; outline: none; }
     .conversations-list { flex: 1; overflow-y: auto; }
     .conv-item { padding: 12px 16px; display: flex; align-items: center; gap: 12px; cursor: pointer; transition: background 0.2s; border-bottom: 1px solid #3e3e4e; }
     .conv-item:hover { background: #3e3e4e; }
@@ -29,7 +31,7 @@
     .chat-actions button { background: none; border: none; color: white; font-size: 20px; cursor: pointer; margin-left: 12px; }
     .members-panel { width: 280px; background: #2c2c3a; border-left: 1px solid #3e3e4e; display: none; flex-direction: column; overflow-y: auto; }
     .members-panel.show { display: flex; }
-    .members-header { padding: 16px; border-bottom: 1px solid #3e3e4e; font-weight: bold; }
+    .members-header { padding: 16px; border-bottom: 1px solid #3e3e4e; font-weight: bold; display: flex; justify-content: space-between; align-items: center; }
     .member-item { padding: 12px; display: flex; align-items: center; gap: 12px; cursor: pointer; border-bottom: 1px solid #3e3e4e; }
     .member-item:hover { background: #3e3e4e; }
     .messages-container { flex: 1; overflow-y: auto; padding: 16px; display: flex; flex-direction: column; gap: 8px; }
@@ -49,7 +51,8 @@
     .modal-content input, .modal-content textarea, .modal-content select { width: 100%; padding: 8px; margin: 8px 0; border-radius: 8px; border: none; background: #3e3e4e; color: white; }
     .modal-content button { margin-top: 12px; padding: 8px 16px; background: #4a76a8; border: none; border-radius: 20px; color: white; cursor: pointer; }
     .search-results { margin-top: 12px; max-height: 200px; overflow-y: auto; }
-    .search-user-item { padding: 8px; background: #3e3e4e; margin-bottom: 4px; border-radius: 8px; cursor: pointer; }
+    .search-user-item { padding: 8px; background: #3e3e4e; margin-bottom: 4px; border-radius: 8px; cursor: pointer; display: flex; align-items: center; gap: 8px; }
+    .search-category { padding: 8px; background: #4a4a5a; font-weight: bold; margin-top: 4px; }
     .call-modal { position: fixed; top: 0; left: 0; width: 100%; height: 100%; background: rgba(0,0,0,0.8); display: none; justify-content: center; align-items: center; z-index: 1000; }
     .call-container { background: #2c2c3a; border-radius: 24px; padding: 20px; width: 80%; max-width: 800px; text-align: center; }
     .video-container { display: flex; gap: 16px; justify-content: center; margin: 16px 0; }
@@ -59,12 +62,58 @@
     .group-settings { margin-top: 16px; border-top: 1px solid #3e3e4e; padding-top: 16px; }
     .admin-checkbox { margin-left: auto; }
     .logout-btn { background: none; border: none; color: #ff6b6b; cursor: pointer; font-size: 14px; margin-left: 12px; }
+    .menu-toggle {
+      display: none;
+      background: none;
+      border: none;
+      color: white;
+      font-size: 24px;
+      cursor: pointer;
+      margin-right: 10px;
+    }
+    .close-panel-btn {
+      background: none;
+      border: none;
+      color: white;
+      font-size: 20px;
+      cursor: pointer;
+    }
+    @media (max-width: 768px) {
+      .sidebar {
+        position: fixed;
+        left: -280px;
+        transition: left 0.3s;
+        z-index: 1000;
+        height: 100%;
+      }
+      .sidebar.show {
+        left: 0;
+      }
+      .members-panel {
+        position: fixed;
+        right: -280px;
+        transition: right 0.3s;
+        z-index: 1000;
+        height: 100%;
+      }
+      .members-panel.show {
+        right: 0;
+      }
+      .menu-toggle {
+        display: block;
+      }
+      .chat-header-left .avatar {
+        width: 32px;
+        height: 32px;
+      }
+    }
   </style>
 </head>
 <body>
 <div id="app">
   <div class="sidebar" id="sidebar">
     <div class="sidebar-header">
+      <button class="menu-toggle" id="menuToggle">☰</button>
       <div class="user-info" id="profileBtn">
         <img class="avatar" id="currentAvatar" src="" alt="avatar">
         <span id="currentDisplayName"></span>
@@ -79,6 +128,10 @@
     <div class="sidebar-search">
       <input type="text" id="searchUsersInput" placeholder="Поиск пользователей...">
       <div id="searchResults" class="search-results" style="display:none;"></div>
+    </div>
+    <div class="sidebar-search-group">
+      <input type="text" id="searchGroupInput" placeholder="Поиск групп и каналов...">
+      <div id="groupSearchResults" class="search-results" style="display:none;"></div>
     </div>
     <div class="conversations-list" id="conversationsList"></div>
   </div>
@@ -104,7 +157,10 @@
     <div id="emojiPicker" class="emoji-picker"></div>
   </div>
   <div class="members-panel" id="membersPanel">
-    <div class="members-header" id="membersHeader">Участники</div>
+    <div class="members-header" id="membersHeader">
+      Участники
+      <button class="close-panel-btn" id="closeMembersPanel">✕</button>
+    </div>
     <div id="membersList"></div>
     <div id="groupSettings" class="group-settings" style="display: none;"></div>
   </div>
@@ -648,7 +704,8 @@
   document.getElementById('closeProfileBtn').onclick = () => hideModal('profileModal');
   document.getElementById('closeUserProfileBtn').onclick = () => hideModal('userProfileModal');
   document.getElementById('membersBtn').onclick = () => document.getElementById('membersPanel').classList.toggle('show');
-  document.getElementById('chatInfoBtn').onclick = () => { if (currentConvType === 'group' || currentConvType === 'channel') document.getElementById('membersPanel').classList.toggle('show'); };
+  document.getElementById('closeMembersPanel').onclick = () => document.getElementById('membersPanel').classList.remove('show');
+  document.getElementById('chatInfoBtn').onclick = () => { if (window.innerWidth <= 768) { document.querySelector('.sidebar').classList.remove('show'); } if (currentConvType === 'group' || currentConvType === 'channel') document.getElementById('membersPanel').classList.toggle('show'); };
   document.getElementById('settingsBtn').onclick = () => { if (currentConvType === 'group') refreshMembersPanel(); else if (currentConvType === 'channel') refreshMembersPanel(); };
   document.getElementById('newChatBtn').onclick = () => showModal('newChatModal');
   document.getElementById('startChatBtn').onclick = async () => {
@@ -691,7 +748,7 @@
   document.getElementById('closeGroupSettingsBtn').onclick = () => hideModal('groupSettingsModal');
   document.getElementById('closeChannelSettingsBtn').onclick = () => hideModal('channelSettingsModal');
 
-  // Search users
+  // Поиск пользователей
   let searchTimeout;
   document.getElementById('searchUsersInput').addEventListener('input', async (e) => {
     clearTimeout(searchTimeout);
@@ -705,7 +762,7 @@
       usersList.forEach(u => {
         const div = document.createElement('div');
         div.className = 'search-user-item';
-        div.innerText = `${u.displayName} (@${u.login})`;
+        div.innerHTML = `<img class="avatar" src="${u.avatar || ''}" style="width:24px;height:24px;"> ${escapeHtml(u.displayName)} (@${u.login})`;
         div.onclick = () => {
           const convId = [currentUser.id, u.id].sort().join('_');
           openConversation({ id: convId, type: 'private', name: u.displayName, avatar: u.avatar });
@@ -716,6 +773,89 @@
       });
       container.style.display = usersList.length ? 'block' : 'none';
     }, 300);
+  });
+
+  // Поиск групп и каналов
+  let groupSearchTimeout;
+  document.getElementById('searchGroupInput').addEventListener('input', async (e) => {
+    clearTimeout(groupSearchTimeout);
+    const q = e.target.value;
+    if (!q) { document.getElementById('groupSearchResults').style.display = 'none'; return; }
+    groupSearchTimeout = setTimeout(async () => {
+      const groupsRes = await fetch(`/search-groups?q=${encodeURIComponent(q)}`, { headers: { 'Authorization': `Bearer ${token}` } });
+      const groups = await groupsRes.json();
+      const channelsRes = await fetch(`/search-channels?q=${encodeURIComponent(q)}`, { headers: { 'Authorization': `Bearer ${token}` } });
+      const channels = await channelsRes.json();
+      const container = document.getElementById('groupSearchResults');
+      container.innerHTML = '';
+      if (groups.length === 0 && channels.length === 0) {
+        container.innerHTML = '<div class="search-user-item">Ничего не найдено</div>';
+      } else {
+        if (groups.length) {
+          container.innerHTML += '<div class="search-category">Группы</div>';
+          groups.forEach(g => {
+            const div = document.createElement('div');
+            div.className = 'search-user-item';
+            div.innerHTML = `<img class="avatar" src="${g.avatar || ''}" style="width:24px;height:24px;"> ${escapeHtml(g.name)} (${g.memberCount} участников) ${g.joined ? '✓' : ''}`;
+            div.onclick = () => {
+              if (g.joined) {
+                openConversation({ id: g.id, type: 'group', name: g.name, avatar: g.avatar });
+              } else {
+                if (confirm(`Вы не состоите в группе "${g.name}". Вступить?`)) {
+                  fetch('/group/join', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ token, groupId: g.id }) })
+                    .then(() => {
+                      openConversation({ id: g.id, type: 'group', name: g.name, avatar: g.avatar });
+                    });
+                }
+              }
+              container.style.display = 'none';
+              document.getElementById('searchGroupInput').value = '';
+            };
+            container.appendChild(div);
+          });
+        }
+        if (channels.length) {
+          container.innerHTML += '<div class="search-category">Каналы</div>';
+          channels.forEach(c => {
+            const div = document.createElement('div');
+            div.className = 'search-user-item';
+            div.innerHTML = `<img class="avatar" src="${c.avatar || ''}" style="width:24px;height:24px;"> ${escapeHtml(c.name)} (${c.subscriberCount} подписчиков) ${c.subscribed ? '✓' : ''}`;
+            div.onclick = () => {
+              if (c.subscribed) {
+                openConversation({ id: c.id, type: 'channel', name: c.name, avatar: c.avatar });
+              } else {
+                if (confirm(`Подписаться на канал "${c.name}"?`)) {
+                  fetch('/channel/subscribe', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ token, channelId: c.id }) })
+                    .then(() => {
+                      openConversation({ id: c.id, type: 'channel', name: c.name, avatar: c.avatar });
+                    });
+                }
+              }
+              container.style.display = 'none';
+              document.getElementById('searchGroupInput').value = '';
+            };
+            container.appendChild(div);
+          });
+        }
+      }
+      container.style.display = 'block';
+    }, 300);
+  });
+
+  // Мобильная навигация
+  document.getElementById('menuToggle').addEventListener('click', () => {
+    document.querySelector('.sidebar').classList.toggle('show');
+  });
+  document.getElementById('closeMembersPanel').addEventListener('click', () => {
+    document.getElementById('membersPanel').classList.remove('show');
+  });
+  document.getElementById('chatInfoBtn').addEventListener('click', () => {
+    if (window.innerWidth <= 768) {
+      document.querySelector('.sidebar').classList.remove('show');
+    }
+    if (currentConvType === 'group' || currentConvType === 'channel') {
+      document.getElementById('membersPanel').classList.toggle('show');
+    }
   });
 
   // Auth modals
