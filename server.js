@@ -113,6 +113,41 @@ app.get('/search-users', (req, res) => {
   res.json(results);
 });
 
+app.get('/search-groups', (req, res) => {
+  const token = req.headers.authorization?.split(' ')[1];
+  const userId = sessions.get(token);
+  if (!userId) return res.status(401).json({ error: 'Unauthorized' });
+  const { q } = req.query;
+  if (!q) return res.json([]);
+  const results = [...groups.values()].filter(g => g.name.toLowerCase().includes(q.toLowerCase()));
+  const formatted = results.map(g => ({
+    id: g.id,
+    name: g.name,
+    avatar: g.avatar,
+    memberCount: g.members.size,
+    joined: g.members.has(userId)
+  }));
+  res.json(formatted);
+});
+
+app.get('/search-channels', (req, res) => {
+  const token = req.headers.authorization?.split(' ')[1];
+  const userId = sessions.get(token);
+  if (!userId) return res.status(401).json({ error: 'Unauthorized' });
+  const { q } = req.query;
+  if (!q) return res.json([]);
+  const results = [...channels.values()].filter(c => c.name.toLowerCase().includes(q.toLowerCase()));
+  const formatted = results.map(c => ({
+    id: c.id,
+    name: c.name,
+    description: c.description,
+    avatar: c.avatar,
+    subscriberCount: c.subscribers.size,
+    subscribed: c.subscribers.has(userId)
+  }));
+  res.json(formatted);
+});
+
 app.post('/update-profile', (req, res) => {
   const { token, displayName, avatar, status } = req.body;
   const userId = sessions.get(token);
@@ -226,6 +261,22 @@ app.post('/group/set-admin', (req, res) => {
   if (!group.members.has(userIdToSet)) return res.status(400).json({ error: 'Not a member' });
   if (isAdmin) group.admins.add(userIdToSet);
   else group.admins.delete(userIdToSet);
+  groups.set(groupId, group);
+  group.members.forEach(mid => {
+    const sockets = [...io.sockets.sockets.values()].filter(s => s.userId === mid);
+    sockets.forEach(s => s.emit('group-updated', group));
+  });
+  res.json({ success: true });
+});
+
+app.post('/group/join', (req, res) => {
+  const { token, groupId } = req.body;
+  const userId = sessions.get(token);
+  if (!userId) return res.status(401).json({ error: 'Unauthorized' });
+  const group = groups.get(groupId);
+  if (!group) return res.status(404).json({ error: 'Group not found' });
+  if (group.members.has(userId)) return res.json({ success: true, message: 'Already member' });
+  group.members.add(userId);
   groups.set(groupId, group);
   group.members.forEach(mid => {
     const sockets = [...io.sockets.sockets.values()].filter(s => s.userId === mid);
