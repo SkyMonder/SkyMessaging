@@ -4,11 +4,15 @@
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
   <title>SkyMessage</title>
+  <link rel="manifest" href="/manifest.json">
+  <meta name="theme-color" content="#4a76a8">
+  <meta name="apple-mobile-web-app-capable" content="yes">
+  <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
   <style>
+    /* Все стили такие же, как в предыдущей версии, ничего не меняем */
     * { box-sizing: border-box; margin: 0; padding: 0; }
     body { font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif; background: #1e1e2f; color: #fff; height: 100vh; overflow: hidden; }
     #app { display: flex; height: 100vh; }
-    /* Sidebar */
     .sidebar { width: 280px; background: #2c2c3a; border-right: 1px solid #3e3e4e; display: flex; flex-direction: column; }
     .sidebar-header { padding: 16px; border-bottom: 1px solid #3e3e4e; display: flex; justify-content: space-between; align-items: center; }
     .user-info { display: flex; align-items: center; gap: 12px; cursor: pointer; }
@@ -596,7 +600,7 @@
     } else if (msg.type === 'file') {
       const file = msg.content;
       if (file.type.startsWith('image/')) {
-        contentHtml = `<div class="message-file" onclick="downloadFile('${msg.id}')"><img src="${file.data}" style="max-width:200px; max-height:200px; border-radius:8px;"></div>`;
+        contentHtml = `<div class="message-file"><img src="${file.data}" style="max-width:200px; max-height:200px; border-radius:8px;" onclick="downloadFile('${msg.id}')"></div>`;
       } else {
         contentHtml = `<div class="message-file" onclick="downloadFile('${msg.id}')">📎 ${escapeHtml(file.name)} (${(file.size/1024).toFixed(1)} KB)</div>`;
       }
@@ -607,7 +611,8 @@
   }
 
   function downloadFile(msgId) {
-    alert('Файлы хранятся в памяти, скачать можно только в режиме просмотра (файл уже в сообщении).');
+    // Поиск сообщения в кэше (можно сохранить в Map, но для простоты используем глобальный объект)
+    alert('Файл можно сохранить, нажав и удерживая на изображении или ссылке.');
   }
 
   async function sendMessage(text, file = null) {
@@ -621,6 +626,7 @@
       reader.readAsDataURL(file);
     } else if (text.trim()) {
       socket.emit('send-message', { convId: currentConvId, type: 'text', content: text });
+      document.getElementById('messageInput').value = '';
     }
   }
 
@@ -887,6 +893,13 @@
       showModal('loginModal');
     }
   })();
+
+  // Регистрация Service Worker
+  if ('serviceWorker' in navigator) {
+    navigator.serviceWorker.register('/sw.js')
+      .then(reg => console.log('Service Worker registered'))
+      .catch(err => console.log('Service Worker error:', err));
+  }
 </script>
 </body>
 </html>
