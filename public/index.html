@@ -738,7 +738,7 @@
   function connectSocket() {
     if (socket) socket.disconnect();
     socket = io({ auth: { token } });
-    socket.on('connect', () => console.log('Socket connected'));
+    socket.on('connect', () => console.log('Socket connected УРААААААААААААААААААААААААААААААААААААААА'));
     socket.on('conversations', (convs) => renderConversations(convs));
     socket.on('new-message', ({ convId, message }) => {
       if (currentConvId === convId) {
@@ -1299,13 +1299,7 @@
       showModal('loginModal');
     }
   })();
-
-  // Регистрация Service Worker (для PWA)
-  if ('serviceWorker' in navigator) {
-    navigator.serviceWorker.register('/sw.js')
-      .then(reg => console.log('Service Worker registered'))
-      .catch(err => console.log('Service Worker error:', err));
-  }
+}
 </script>
 </body>
 </html>
