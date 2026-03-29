@@ -10,43 +10,97 @@
   <meta name="theme-color" content="#4a76a8">
   <style>
     * { box-sizing: border-box; margin: 0; padding: 0; }
-    body { font-family: system-ui, -apple-system, 'Segoe UI', Roboto, sans-serif; background: #0a0a0f; color: #eef; height: 100vh; overflow: hidden; }
+    body {
+      font-family: system-ui, -apple-system, 'Segoe UI', Roboto, sans-serif;
+      background: #0a0a0f;
+      color: #eef;
+      height: 100vh;
+      overflow: hidden;
+    }
     #app { display: flex; height: 100vh; }
-    .sidebar { width: 280px; background: #111114; border-right: 1px solid #222; display: flex; flex-direction: column; transition: transform 0.2s ease; }
-    .sidebar-header { padding: 16px; border-bottom: 1px solid #222; display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 8px; }
+
+    .sidebar {
+      width: 280px;
+      background: #111114;
+      border-right: 1px solid #222;
+      display: flex;
+      flex-direction: column;
+      transition: transform 0.2s ease;
+    }
+    .sidebar-header {
+      padding: 16px;
+      border-bottom: 1px solid #222;
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      flex-wrap: wrap;
+      gap: 8px;
+    }
     .user-info { display: flex; align-items: center; gap: 12px; cursor: pointer; }
     .avatar { width: 40px; height: 40px; border-radius: 50%; object-fit: cover; background: #2a2a2e; }
     .sidebar-search, .sidebar-search-group { padding: 12px; border-bottom: 1px solid #222; }
-    .sidebar-search input, .sidebar-search-group input { width: 100%; padding: 8px 12px; border-radius: 24px; border: none; background: #1e1e24; color: white; outline: none; }
+    .sidebar-search input, .sidebar-search-group input {
+      width: 100%; padding: 8px 12px; border-radius: 24px; border: none;
+      background: #1e1e24; color: white; outline: none;
+    }
     .conversations-list { flex: 1; overflow-y: auto; }
-    .conv-item { padding: 12px 16px; display: flex; align-items: center; gap: 12px; cursor: pointer; border-bottom: 1px solid #1a1a1e; }
+    .conv-item {
+      padding: 12px 16px; display: flex; align-items: center; gap: 12px;
+      cursor: pointer; border-bottom: 1px solid #1a1a1e;
+    }
     .conv-item:hover { background: #1a1a1f; }
     .conv-item.active { background: #2a2a32; }
     .conv-avatar { width: 48px; height: 48px; border-radius: 50%; object-fit: cover; background: #2a2a2e; }
     .conv-details { flex: 1; }
     .conv-name { font-weight: 600; }
     .conv-last-msg { font-size: 12px; color: #aaa; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+
     .chat-area { flex: 1; display: flex; flex-direction: column; background: #0a0a0f; }
-    .chat-header { padding: 12px 16px; background: #111114; border-bottom: 1px solid #222; display: flex; justify-content: space-between; align-items: center; }
+    .chat-header {
+      padding: 12px 16px; background: #111114; border-bottom: 1px solid #222;
+      display: flex; justify-content: space-between; align-items: center;
+    }
     .chat-header-left { display: flex; align-items: center; gap: 12px; cursor: pointer; }
-    .chat-actions button { background: none; border: none; color: white; font-size: 20px; cursor: pointer; margin-left: 12px; }
-    .members-panel { width: 280px; background: #111114; border-left: 1px solid #222; display: none; flex-direction: column; overflow-y: auto; }
+    .chat-actions button {
+      background: none; border: none; color: white; font-size: 20px;
+      cursor: pointer; margin-left: 12px;
+    }
+
+    .members-panel {
+      width: 280px; background: #111114; border-left: 1px solid #222;
+      display: none; flex-direction: column; overflow-y: auto;
+    }
     .members-panel.show { display: flex; }
-    .members-header { padding: 16px; border-bottom: 1px solid #222; font-weight: bold; display: flex; justify-content: space-between; align-items: center; }
-    .member-item { padding: 12px; display: flex; align-items: center; gap: 12px; cursor: pointer; border-bottom: 1px solid #1a1a1e; }
+    .members-header {
+      padding: 16px; border-bottom: 1px solid #222; font-weight: bold;
+      display: flex; justify-content: space-between; align-items: center;
+    }
+    .member-item {
+      padding: 12px; display: flex; align-items: center; gap: 12px;
+      cursor: pointer; border-bottom: 1px solid #1a1a1e;
+    }
     .member-item:hover { background: #1a1a1f; }
+
     .messages-container { flex: 1; overflow-y: auto; padding: 16px; display: flex; flex-direction: column; gap: 8px; }
-    .message { max-width: 70%; padding: 8px 12px; border-radius: 18px; background: #1e1e24; align-self: flex-start; }
+    .message {
+      max-width: 70%; padding: 8px 12px; border-radius: 18px;
+      background: #1e1e24; align-self: flex-start;
+    }
     .message.own { align-self: flex-end; background: #2c6e9e; }
     .message-sender { font-size: 12px; font-weight: bold; margin-bottom: 4px; cursor: pointer; }
     .message-text { word-wrap: break-word; }
     .message-file { display: flex; align-items: center; gap: 8px; background: #2a2a32; padding: 8px; border-radius: 12px; cursor: pointer; }
     .message-time { font-size: 10px; color: #aaa; margin-top: 4px; text-align: right; }
-    .input-area { padding: 12px; background: #111114; display: flex; gap: 8px; align-items: center; border-top: 1px solid #222; }
+
+    .input-area {
+      padding: 12px; background: #111114; display: flex; gap: 8px;
+      align-items: center; border-top: 1px solid #222;
+    }
     .input-area input { flex: 1; padding: 10px 14px; border-radius: 24px; border: none; background: #1e1e24; color: white; outline: none; }
     .input-area button { background: #2c6e9e; border: none; color: white; width: 40px; height: 40px; border-radius: 50%; cursor: pointer; font-size: 18px; }
     .file-input-label { background: #2c6e9e; border-radius: 50%; width: 40px; height: 40px; display: flex; align-items: center; justify-content: center; cursor: pointer; }
     .emoji-picker { position: absolute; bottom: 70px; background: #1e1e24; border-radius: 12px; padding: 8px; display: none; grid-template-columns: repeat(6, 1fr); gap: 8px; max-width: 300px; z-index: 100; }
+
     .modal { position: fixed; top: 0; left: 0; width: 100%; height: 100%; background: rgba(0,0,0,0.6); display: none; justify-content: center; align-items: center; z-index: 900; }
     .modal-content { background: #111114; border-radius: 24px; padding: 24px; width: 90%; max-width: 400px; max-height: 80vh; overflow-y: auto; }
     .modal-content input, .modal-content textarea { width: 100%; padding: 10px; margin: 8px 0; border-radius: 12px; border: none; background: #1e1e24; color: white; }
@@ -65,9 +119,22 @@
     .logout-btn { background: none; border: none; color: #ff6b6b; cursor: pointer; font-size: 14px; margin-left: 12px; }
     .menu-toggle { display: none; background: none; border: none; color: white; font-size: 24px; cursor: pointer; margin-right: 10px; }
     .close-panel-btn { background: none; border: none; color: white; font-size: 20px; cursor: pointer; }
-    body.mobile-mode .sidebar { position: fixed; left: -280px; z-index: 1000; height: 100%; transition: left 0.2s; }
+
+    body.mobile-mode .sidebar {
+      position: fixed;
+      left: -280px;
+      z-index: 1000;
+      height: 100%;
+      transition: left 0.2s;
+    }
     body.mobile-mode .sidebar.show { left: 0; }
-    body.mobile-mode .members-panel { position: fixed; right: -280px; z-index: 1000; height: 100%; transition: right 0.2s; }
+    body.mobile-mode .members-panel {
+      position: fixed;
+      right: -280px;
+      z-index: 1000;
+      height: 100%;
+      transition: right 0.2s;
+    }
     body.mobile-mode .members-panel.show { right: 0; }
     body.mobile-mode .menu-toggle { display: inline-block; }
     body.mobile-mode .chat-header-left .avatar { width: 36px; height: 36px; }
@@ -77,7 +144,7 @@
 <div id="app">
   <div class="sidebar" id="sidebar">
     <div class="sidebar-header">
-      <button class="menu-toggle" id="menuToggle">☰</button>
+      <!-- Гамбургер будет добавлен скриптом -->
       <div class="user-info" id="profileBtn">
         <img class="avatar" id="currentAvatar" src="" alt="avatar">
         <span id="currentDisplayName"></span>
@@ -717,10 +784,37 @@
         document.querySelector('meta[name="viewport"]').setAttribute('content', 'width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=yes');
         alert('Обычный режим');
       }
+      // Принудительно обновляем состояние гамбургера
+      setTimeout(() => ensureHamburger(), 50);
     };
   }
 
-  // Гамбургер
+  // Функция создания гамбургера, если его нет
+  function ensureHamburger() {
+    let hamburger = document.getElementById('menuToggle');
+    if (!hamburger) {
+      hamburger = document.createElement('button');
+      hamburger.id = 'menuToggle';
+      hamburger.className = 'menu-toggle';
+      hamburger.innerText = '☰';
+      hamburger.style.cssText = 'background:none; border:none; color:white; font-size:28px; cursor:pointer; margin-right:10px;';
+      const header = document.querySelector('.sidebar-header');
+      if (header) header.insertBefore(hamburger, header.firstChild);
+      hamburger.onclick = () => document.getElementById('sidebar').classList.toggle('show');
+    }
+    if (document.body.classList.contains('mobile-mode')) {
+      hamburger.style.display = 'inline-block';
+    } else {
+      hamburger.style.display = 'none';
+    }
+  }
+
+  // Следим за изменениями класса mobile-mode
+  const observer = new MutationObserver(() => ensureHamburger());
+  observer.observe(document.body, { attributes: true, attributeFilter: ['class'] });
+  ensureHamburger();
+
+  // Гамбургер (дополнительно)
   const menuToggle = document.getElementById('menuToggle');
   if (menuToggle) {
     menuToggle.addEventListener('click', () => {
