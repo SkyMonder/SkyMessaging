@@ -4,6 +4,7 @@ const { Server } = require('socket.io');
 const cors = require('cors');
 const path = require('path');
 const crypto = require('crypto');
+const fs = require('fs');
 
 const app = express();
 const server = http.createServer(app);
@@ -14,20 +15,54 @@ const io = new Server(server, {
 app.use(cors());
 app.use(express.json({ limit: '50mb' }));
 app.use(express.urlencoded({ extended: true, limit: '50mb' }));
+
+// Заголовки для отключения кэширования HTML и основных файлов
+app.use((req, res, next) => {
+  if (req.url.endsWith('.html') || req.url === '/' || req.url === '/index.html') {
+    res.setHeader('Cache-Control', 'no-cache, no-store, must-revalidate');
+    res.setHeader('Pragma', 'no-cache');
+    res.setHeader('Expires', '0');
+  }
+  next();
+});
+
 app.use(express.static(path.join(__dirname, 'public')));
 
-const STORAGE_URL = 'https://skymessagedb.onrender.com'; // ЗАМЕНИТЕ НА ВАШ URL
+// In-memory storage
+let users = new Map();       // userId -> object
+let sessions = new Map();    // token -> userId
+let messages = new Map();    // convId -> array of messages
+let groups = new Map();      // groupId -> object
+let channels = new Map();    // channelId -> object
 
-async function storageRequest(endpoint, method = 'GET', body = null) {
-  const url = `${STORAGE_URL}${endpoint}`;
-  const options = {
-    method,
-    headers: { 'Content-Type': 'application/json' }
+const DATA_FILE = './data.json';
+
+function saveData() {
+  const data = {
+    users: Array.from(users.entries()),
+    sessions: Array.from(sessions.entries()),
+    messages: Array.from(messages.entries()),
+    groups: Array.from(groups.entries()),
+    channels: Array.from(channels.entries())
   };
-  if (body) options.body = JSON.stringify(body);
-  const res = await fetch(url, options);
-  if (!res.ok) throw new Error(`Storage error: ${res.status}`);
-  return res.json();
+  fs.writeFileSync(DATA_FILE, JSON.stringify(data, null, 2));
+  console.log('Data saved');
+}
+
+function loadData() {
+  if (fs.existsSync(DATA_FILE)) {
+    const raw = fs.readFileSync(DATA_FILE);
+    const data = JSON.parse(raw);
+    users = new Map(data.users);
+    sessions = new Map(data.sessions);
+    messages = new Map(data.messages);
+    groups = new Map(data.groups);
+    channels = new Map(data.channels);
+    console.log('Data loaded from file');
+  } else {
+    initDemoData();
+    saveData();
+  }
 }
 
 function generateId() {
@@ -38,434 +73,367 @@ function getPrivateConversationId(user1, user2) {
   return [user1, user2].sort().join('_');
 }
 
-app.post('/register', async (req, res) => {
+function saveMessage(convId, message) {
+  if (!messages.has(convId)) messages.set(convId, []);
+  messages.get(convId).push(message);
+  saveData();
+}
+
+function initDemoData() {
+  const demoUsers = [
+    { login: 'alice', password: '123', displayName: 'Alice', avatar: '', status: 'online' },
+    { login: 'bob', password: '123', displayName: 'Bob', avatar: '', status: 'online' },
+    { login: 'charlie', password: '123', displayName: 'Charlie', avatar: '', status: 'away' }
+  ];
+  demoUsers.forEach(user => {
+    const id = generateId();
+    users.set(id, {
+      id, login: user.login, password: user.password,
+      displayName: user.displayName, avatar: user.avatar,
+      status: user.status, createdAt: new Date().toISOString()
+    });
+  });
+
+  const aliceId = [...users.values()].find(u => u.login === 'alice').id;
+  const bobId = [...users.values()].find(u => u.login === 'bob').id;
+  const charlieId = [...users.values()].find(u => u.login === 'charlie').id;
+
+  const groupId = generateId();
+  groups.set(groupId, {
+    id: groupId, name: 'Tech Talk', avatar: '', ownerId: aliceId,
+    members: new Set([aliceId, bobId, charlieId]),
+    admins: new Set([aliceId]), createdAt: new Date().toISOString()
+  });
+
+  const channelId = generateId();
+  channels.set(channelId, {
+    id: channelId, name: 'Announcements', description: 'Official news', avatar: '', ownerId: aliceId,
+    subscribers: new Set([aliceId, bobId, charlieId]), createdAt: new Date().toISOString()
+  });
+
+  const convId = getPrivateConversationId(aliceId, bobId);
+  saveMessage(convId, { id: generateId(), senderId: aliceId, type: 'text', content: 'Hi Bob!', timestamp: Date.now() });
+  saveMessage(convId, { id: generateId(), senderId: bobId, type: 'text', content: 'Hello Alice!', timestamp: Date.now() });
+}
+
+// ------------------- API -------------------
+app.post('/register', (req, res) => {
   const { login, password, displayName } = req.body;
   if (!login || !password) return res.status(400).json({ error: 'Login and password required' });
-  try {
-    const users = await storageRequest('/api/users');
-    const existing = Object.values(users).find(u => u.login === login);
-    if (existing) return res.status(400).json({ error: 'User already exists' });
-    const id = generateId();
-    const newUser = {
-      id, login, password, displayName: displayName || login, avatar: '', status: 'online', createdAt: new Date().toISOString()
-    };
-    await storageRequest('/api/users/' + id, 'PUT', newUser);
-    res.json({ success: true, userId: id });
-  } catch (err) {
-    console.error(err);
-    res.status(500).json({ error: 'Storage error' });
-  }
+  if ([...users.values()].some(u => u.login === login)) return res.status(400).json({ error: 'User already exists' });
+  const id = generateId();
+  users.set(id, { id, login, password, displayName: displayName || login, avatar: '', status: 'online', createdAt: new Date().toISOString() });
+  saveData();
+  res.json({ success: true, userId: id });
 });
 
-app.post('/login', async (req, res) => {
+app.post('/login', (req, res) => {
   const { login, password } = req.body;
-  try {
-    const users = await storageRequest('/api/users');
-    const user = Object.values(users).find(u => u.login === login && u.password === password);
-    if (!user) return res.status(401).json({ error: 'Invalid credentials' });
-    const token = generateId();
-    await storageRequest('/api/sessions/' + token, 'PUT', { token, userId: user.id });
-    res.json({ token, user: { id: user.id, login: user.login, displayName: user.displayName, avatar: user.avatar, status: user.status } });
-  } catch (err) {
-    console.error(err);
-    res.status(500).json({ error: 'Storage error' });
-  }
+  const user = [...users.values()].find(u => u.login === login && u.password === password);
+  if (!user) return res.status(401).json({ error: 'Invalid credentials' });
+  const token = generateId();
+  sessions.set(token, user.id);
+  saveData();
+  res.json({ token, user: { id: user.id, login: user.login, displayName: user.displayName, avatar: user.avatar, status: user.status } });
 });
 
-app.get('/me', async (req, res) => {
+app.get('/me', (req, res) => {
   const token = req.headers.authorization?.split(' ')[1];
   if (!token) return res.status(401).json({ error: 'No token' });
-  try {
-    const sessions = await storageRequest('/api/sessions');
-    const session = sessions[token];
-    if (!session) return res.status(401).json({ error: 'Invalid token' });
-    const users = await storageRequest('/api/users');
-    const user = users[session.userId];
-    if (!user) return res.status(404).json({ error: 'User not found' });
-    res.json({ id: user.id, login: user.login, displayName: user.displayName, avatar: user.avatar, status: user.status });
-  } catch (err) {
-    console.error(err);
-    res.status(500).json({ error: 'Storage error' });
-  }
+  const userId = sessions.get(token);
+  if (!userId) return res.status(401).json({ error: 'Invalid token' });
+  const user = users.get(userId);
+  if (!user) return res.status(404).json({ error: 'User not found' });
+  res.json({ id: user.id, login: user.login, displayName: user.displayName, avatar: user.avatar, status: user.status });
 });
 
-app.get('/search-users', async (req, res) => {
+app.get('/search-users', (req, res) => {
   const { q } = req.query;
   if (!q) return res.json([]);
-  try {
-    const users = await storageRequest('/api/users');
-    const results = Object.values(users).filter(u => u.login.toLowerCase().includes(q.toLowerCase())).map(u => ({
-      id: u.id, login: u.login, displayName: u.displayName, avatar: u.avatar, status: u.status
-    }));
-    res.json(results);
-  } catch (err) {
-    console.error(err);
-    res.status(500).json({ error: 'Storage error' });
-  }
+  const results = [...users.values()].filter(u => u.login.toLowerCase().includes(q.toLowerCase())).map(u => ({
+    id: u.id, login: u.login, displayName: u.displayName, avatar: u.avatar, status: u.status
+  }));
+  res.json(results);
 });
 
-app.post('/update-profile', async (req, res) => {
+app.get('/search-groups', (req, res) => {
+  const token = req.headers.authorization?.split(' ')[1];
+  const userId = sessions.get(token);
+  if (!userId) return res.status(401).json({ error: 'Unauthorized' });
+  const { q } = req.query;
+  if (!q) return res.json([]);
+  const results = [...groups.values()].filter(g => g.name.toLowerCase().includes(q.toLowerCase()));
+  const formatted = results.map(g => ({
+    id: g.id,
+    name: g.name,
+    avatar: g.avatar,
+    memberCount: g.members.size,
+    joined: g.members.has(userId)
+  }));
+  res.json(formatted);
+});
+
+app.get('/search-channels', (req, res) => {
+  const token = req.headers.authorization?.split(' ')[1];
+  const userId = sessions.get(token);
+  if (!userId) return res.status(401).json({ error: 'Unauthorized' });
+  const { q } = req.query;
+  if (!q) return res.json([]);
+  const results = [...channels.values()].filter(c => c.name.toLowerCase().includes(q.toLowerCase()));
+  const formatted = results.map(c => ({
+    id: c.id,
+    name: c.name,
+    description: c.description,
+    avatar: c.avatar,
+    subscriberCount: c.subscribers.size,
+    subscribed: c.subscribers.has(userId)
+  }));
+  res.json(formatted);
+});
+
+app.post('/update-profile', (req, res) => {
   const { token, displayName, avatar, status } = req.body;
-  try {
-    const sessions = await storageRequest('/api/sessions');
-    const session = sessions[token];
-    if (!session) return res.status(401).json({ error: 'Unauthorized' });
-    const userId = session.userId;
-    const users = await storageRequest('/api/users');
-    const user = users[userId];
-    if (!user) return res.status(404).json({ error: 'User not found' });
-    if (displayName) user.displayName = displayName;
-    if (avatar !== undefined) user.avatar = avatar;
-    if (status) user.status = status;
-    await storageRequest('/api/users/' + userId, 'PUT', user);
-    const sockets = [...io.sockets.sockets.values()].filter(s => s.userId === userId);
-    sockets.forEach(s => s.emit('profile-updated', { userId, displayName: user.displayName, avatar: user.avatar, status: user.status }));
-    res.json({ success: true, user: { id: user.id, login: user.login, displayName: user.displayName, avatar: user.avatar, status: user.status } });
-  } catch (err) {
-    console.error(err);
-    res.status(500).json({ error: 'Storage error' });
-  }
+  const userId = sessions.get(token);
+  if (!userId) return res.status(401).json({ error: 'Unauthorized' });
+  const user = users.get(userId);
+  if (!user) return res.status(404).json({ error: 'User not found' });
+  if (displayName) user.displayName = displayName;
+  if (avatar !== undefined) user.avatar = avatar;
+  if (status) user.status = status;
+  users.set(userId, user);
+  saveData();
+  const sockets = [...io.sockets.sockets.values()].filter(s => s.userId === userId);
+  sockets.forEach(s => s.emit('profile-updated', { userId, displayName: user.displayName, avatar: user.avatar, status: user.status }));
+  res.json({ success: true, user: { id: user.id, login: user.login, displayName: user.displayName, avatar: user.avatar, status: user.status } });
 });
 
-app.get('/user/:id', async (req, res) => {
-  try {
-    const users = await storageRequest('/api/users');
-    const user = users[req.params.id];
-    if (!user) return res.status(404).json({ error: 'Not found' });
-    res.json({ id: user.id, login: user.login, displayName: user.displayName, avatar: user.avatar, status: user.status, createdAt: user.createdAt });
-  } catch (err) {
-    console.error(err);
-    res.status(500).json({ error: 'Storage error' });
-  }
+app.get('/user/:id', (req, res) => {
+  const user = users.get(req.params.id);
+  if (!user) return res.status(404).json({ error: 'Not found' });
+  res.json({ id: user.id, login: user.login, displayName: user.displayName, avatar: user.avatar, status: user.status, createdAt: user.createdAt });
 });
 
-app.post('/create-group', async (req, res) => {
+// Groups
+app.post('/create-group', (req, res) => {
   const { token, name, memberIds } = req.body;
-  try {
-    const sessions = await storageRequest('/api/sessions');
-    const session = sessions[token];
-    if (!session) return res.status(401).json({ error: 'Unauthorized' });
-    const userId = session.userId;
-    const groupId = generateId();
-    const group = {
-      id: groupId, name: name || 'New Group', avatar: '', ownerId: userId,
-      members: [userId, ...(memberIds || [])],
-      admins: [userId],
-      createdAt: new Date().toISOString()
-    };
-    await storageRequest('/api/groups/' + groupId, 'PUT', group);
-    group.members.forEach(mid => {
-      const sockets = [...io.sockets.sockets.values()].filter(s => s.userId === mid);
-      sockets.forEach(s => s.emit('group-created', group));
-    });
-    res.json({ success: true, group });
-  } catch (err) {
-    console.error(err);
-    res.status(500).json({ error: 'Storage error' });
-  }
+  const userId = sessions.get(token);
+  if (!userId) return res.status(401).json({ error: 'Unauthorized' });
+  const groupId = generateId();
+  const group = {
+    id: groupId, name: name || 'New Group', avatar: '', ownerId: userId,
+    members: new Set([userId, ...(memberIds || [])]), admins: new Set([userId]), createdAt: new Date().toISOString()
+  };
+  groups.set(groupId, group);
+  saveData();
+  group.members.forEach(mid => {
+    const sockets = [...io.sockets.sockets.values()].filter(s => s.userId === mid);
+    sockets.forEach(s => s.emit('group-created', group));
+  });
+  res.json({ success: true, group: { ...group, members: Array.from(group.members), admins: Array.from(group.admins) } });
 });
 
-app.get('/group/:id', async (req, res) => {
-  try {
-    const groups = await storageRequest('/api/groups');
-    const group = groups[req.params.id];
-    if (!group) return res.status(404).json({ error: 'Not found' });
-    const users = await storageRequest('/api/users');
-    const members = group.members.map(id => users[id]).filter(u => u);
-    res.json({ ...group, members, admins: group.admins });
-  } catch (err) {
-    console.error(err);
-    res.status(500).json({ error: 'Storage error' });
-  }
+app.get('/group/:id', (req, res) => {
+  const group = groups.get(req.params.id);
+  if (!group) return res.status(404).json({ error: 'Not found' });
+  const members = Array.from(group.members).map(id => users.get(id)).filter(u => u);
+  const admins = Array.from(group.admins);
+  res.json({ ...group, members, admins });
 });
 
-app.post('/group/update', async (req, res) => {
+app.post('/group/update', (req, res) => {
   const { token, groupId, name, avatar } = req.body;
-  try {
-    const sessions = await storageRequest('/api/sessions');
-    const session = sessions[token];
-    if (!session) return res.status(401).json({ error: 'Unauthorized' });
-    const userId = session.userId;
-    const groups = await storageRequest('/api/groups');
-    const group = groups[groupId];
-    if (!group) return res.status(404).json({ error: 'Group not found' });
-    if (!group.admins.includes(userId)) return res.status(403).json({ error: 'Not admin' });
-    if (name) group.name = name;
-    if (avatar !== undefined) group.avatar = avatar;
-    await storageRequest('/api/groups/' + groupId, 'PUT', group);
-    group.members.forEach(mid => {
-      const sockets = [...io.sockets.sockets.values()].filter(s => s.userId === mid);
-      sockets.forEach(s => s.emit('group-updated', group));
-    });
-    res.json({ success: true, group });
-  } catch (err) {
-    console.error(err);
-    res.status(500).json({ error: 'Storage error' });
-  }
+  const userId = sessions.get(token);
+  if (!userId) return res.status(401).json({ error: 'Unauthorized' });
+  const group = groups.get(groupId);
+  if (!group) return res.status(404).json({ error: 'Group not found' });
+  if (!group.admins.has(userId)) return res.status(403).json({ error: 'Not admin' });
+  if (name) group.name = name;
+  if (avatar !== undefined) group.avatar = avatar;
+  groups.set(groupId, group);
+  saveData();
+  group.members.forEach(mid => {
+    const sockets = [...io.sockets.sockets.values()].filter(s => s.userId === mid);
+    sockets.forEach(s => s.emit('group-updated', group));
+  });
+  res.json({ success: true, group: { ...group, members: Array.from(group.members), admins: Array.from(group.admins) } });
 });
 
-app.post('/group/add-member', async (req, res) => {
+app.post('/group/add-member', (req, res) => {
   const { token, groupId, userIdToAdd } = req.body;
-  try {
-    const sessions = await storageRequest('/api/sessions');
-    const session = sessions[token];
-    if (!session) return res.status(401).json({ error: 'Unauthorized' });
-    const userId = session.userId;
-    const groups = await storageRequest('/api/groups');
-    const group = groups[groupId];
-    if (!group) return res.status(404).json({ error: 'Group not found' });
-    if (!group.admins.includes(userId)) return res.status(403).json({ error: 'Not admin' });
-    if (group.members.includes(userIdToAdd)) return res.json({ success: true, message: 'Already member' });
-    group.members.push(userIdToAdd);
-    await storageRequest('/api/groups/' + groupId, 'PUT', group);
-    group.members.forEach(mid => {
-      const sockets = [...io.sockets.sockets.values()].filter(s => s.userId === mid);
-      sockets.forEach(s => s.emit('group-updated', group));
-    });
-    res.json({ success: true });
-  } catch (err) {
-    console.error(err);
-    res.status(500).json({ error: 'Storage error' });
-  }
+  const userId = sessions.get(token);
+  if (!userId) return res.status(401).json({ error: 'Unauthorized' });
+  const group = groups.get(groupId);
+  if (!group) return res.status(404).json({ error: 'Group not found' });
+  if (!group.admins.has(userId)) return res.status(403).json({ error: 'Not admin' });
+  if (group.members.has(userIdToAdd)) return res.json({ success: true, message: 'Already member' });
+  group.members.add(userIdToAdd);
+  groups.set(groupId, group);
+  saveData();
+  group.members.forEach(mid => {
+    const sockets = [...io.sockets.sockets.values()].filter(s => s.userId === mid);
+    sockets.forEach(s => s.emit('group-updated', group));
+  });
+  res.json({ success: true });
 });
 
-app.post('/group/remove-member', async (req, res) => {
+app.post('/group/remove-member', (req, res) => {
   const { token, groupId, userIdToRemove } = req.body;
-  try {
-    const sessions = await storageRequest('/api/sessions');
-    const session = sessions[token];
-    if (!session) return res.status(401).json({ error: 'Unauthorized' });
-    const userId = session.userId;
-    const groups = await storageRequest('/api/groups');
-    const group = groups[groupId];
-    if (!group) return res.status(404).json({ error: 'Group not found' });
-    if (!group.admins.includes(userId) && userId !== userIdToRemove) return res.status(403).json({ error: 'Not admin' });
-    if (!group.members.includes(userIdToRemove)) return res.json({ success: true, message: 'Not a member' });
-    group.members = group.members.filter(id => id !== userIdToRemove);
-    group.admins = group.admins.filter(id => id !== userIdToRemove);
-    if (group.ownerId === userIdToRemove) {
-      const newOwner = group.admins[0] || group.members[0];
-      if (newOwner) group.ownerId = newOwner;
-    }
-    await storageRequest('/api/groups/' + groupId, 'PUT', group);
-    group.members.forEach(mid => {
-      const sockets = [...io.sockets.sockets.values()].filter(s => s.userId === mid);
-      sockets.forEach(s => s.emit('group-updated', group));
-    });
-    res.json({ success: true });
-  } catch (err) {
-    console.error(err);
-    res.status(500).json({ error: 'Storage error' });
+  const userId = sessions.get(token);
+  if (!userId) return res.status(401).json({ error: 'Unauthorized' });
+  const group = groups.get(groupId);
+  if (!group) return res.status(404).json({ error: 'Group not found' });
+  if (!group.admins.has(userId) && userId !== userIdToRemove) return res.status(403).json({ error: 'Not admin' });
+  if (!group.members.has(userIdToRemove)) return res.json({ success: true, message: 'Not a member' });
+  group.members.delete(userIdToRemove);
+  group.admins.delete(userIdToRemove);
+  if (group.ownerId === userIdToRemove) {
+    const newOwner = group.admins.values().next().value || [...group.members][0];
+    if (newOwner) group.ownerId = newOwner;
   }
+  groups.set(groupId, group);
+  saveData();
+  group.members.forEach(mid => {
+    const sockets = [...io.sockets.sockets.values()].filter(s => s.userId === mid);
+    sockets.forEach(s => s.emit('group-updated', group));
+  });
+  res.json({ success: true });
 });
 
-app.post('/group/set-admin', async (req, res) => {
+app.post('/group/set-admin', (req, res) => {
   const { token, groupId, userIdToSet, isAdmin } = req.body;
-  try {
-    const sessions = await storageRequest('/api/sessions');
-    const session = sessions[token];
-    if (!session) return res.status(401).json({ error: 'Unauthorized' });
-    const userId = session.userId;
-    const groups = await storageRequest('/api/groups');
-    const group = groups[groupId];
-    if (!group) return res.status(404).json({ error: 'Group not found' });
-    if (!group.admins.includes(userId)) return res.status(403).json({ error: 'Not admin' });
-    if (!group.members.includes(userIdToSet)) return res.status(400).json({ error: 'Not a member' });
-    if (isAdmin) {
-      if (!group.admins.includes(userIdToSet)) group.admins.push(userIdToSet);
-    } else {
-      group.admins = group.admins.filter(id => id !== userIdToSet);
-    }
-    await storageRequest('/api/groups/' + groupId, 'PUT', group);
-    group.members.forEach(mid => {
-      const sockets = [...io.sockets.sockets.values()].filter(s => s.userId === mid);
-      sockets.forEach(s => s.emit('group-updated', group));
-    });
-    res.json({ success: true });
-  } catch (err) {
-    console.error(err);
-    res.status(500).json({ error: 'Storage error' });
-  }
+  const userId = sessions.get(token);
+  if (!userId) return res.status(401).json({ error: 'Unauthorized' });
+  const group = groups.get(groupId);
+  if (!group) return res.status(404).json({ error: 'Group not found' });
+  if (!group.admins.has(userId)) return res.status(403).json({ error: 'Not admin' });
+  if (!group.members.has(userIdToSet)) return res.status(400).json({ error: 'Not a member' });
+  if (isAdmin) group.admins.add(userIdToSet);
+  else group.admins.delete(userIdToSet);
+  groups.set(groupId, group);
+  saveData();
+  group.members.forEach(mid => {
+    const sockets = [...io.sockets.sockets.values()].filter(s => s.userId === mid);
+    sockets.forEach(s => s.emit('group-updated', group));
+  });
+  res.json({ success: true });
 });
 
-app.post('/group/join', async (req, res) => {
+app.post('/group/join', (req, res) => {
   const { token, groupId } = req.body;
-  try {
-    const sessions = await storageRequest('/api/sessions');
-    const session = sessions[token];
-    if (!session) return res.status(401).json({ error: 'Unauthorized' });
-    const userId = session.userId;
-    const groups = await storageRequest('/api/groups');
-    const group = groups[groupId];
-    if (!group) return res.status(404).json({ error: 'Group not found' });
-    if (group.members.includes(userId)) return res.json({ success: true, message: 'Already member' });
-    group.members.push(userId);
-    await storageRequest('/api/groups/' + groupId, 'PUT', group);
-    group.members.forEach(mid => {
-      const sockets = [...io.sockets.sockets.values()].filter(s => s.userId === mid);
-      sockets.forEach(s => s.emit('group-updated', group));
-    });
-    res.json({ success: true });
-  } catch (err) {
-    console.error(err);
-    res.status(500).json({ error: 'Storage error' });
-  }
+  const userId = sessions.get(token);
+  if (!userId) return res.status(401).json({ error: 'Unauthorized' });
+  const group = groups.get(groupId);
+  if (!group) return res.status(404).json({ error: 'Group not found' });
+  if (group.members.has(userId)) return res.json({ success: true, message: 'Already member' });
+  group.members.add(userId);
+  groups.set(groupId, group);
+  saveData();
+  group.members.forEach(mid => {
+    const sockets = [...io.sockets.sockets.values()].filter(s => s.userId === mid);
+    sockets.forEach(s => s.emit('group-updated', group));
+  });
+  res.json({ success: true });
 });
 
-app.post('/create-channel', async (req, res) => {
+// Channels
+app.post('/create-channel', (req, res) => {
   const { token, name, description } = req.body;
-  try {
-    const sessions = await storageRequest('/api/sessions');
-    const session = sessions[token];
-    if (!session) return res.status(401).json({ error: 'Unauthorized' });
-    const userId = session.userId;
-    const channelId = generateId();
-    const channel = {
-      id: channelId, name: name || 'New Channel', description: description || '', avatar: '', ownerId: userId,
-      subscribers: [userId], createdAt: new Date().toISOString()
-    };
-    await storageRequest('/api/channels/' + channelId, 'PUT', channel);
-    const sockets = [...io.sockets.sockets.values()].filter(s => s.userId === userId);
-    sockets.forEach(s => s.emit('channel-created', channel));
-    res.json({ success: true, channel });
-  } catch (err) {
-    console.error(err);
-    res.status(500).json({ error: 'Storage error' });
-  }
+  const userId = sessions.get(token);
+  if (!userId) return res.status(401).json({ error: 'Unauthorized' });
+  const channelId = generateId();
+  const channel = {
+    id: channelId, name: name || 'New Channel', description: description || '', avatar: '', ownerId: userId,
+    subscribers: new Set([userId]), createdAt: new Date().toISOString()
+  };
+  channels.set(channelId, channel);
+  saveData();
+  const sockets = [...io.sockets.sockets.values()].filter(s => s.userId === userId);
+  sockets.forEach(s => s.emit('channel-created', channel));
+  res.json({ success: true, channel: { ...channel, subscribers: Array.from(channel.subscribers) } });
 });
 
-app.get('/channel/:id', async (req, res) => {
-  try {
-    const channels = await storageRequest('/api/channels');
-    const channel = channels[req.params.id];
-    if (!channel) return res.status(404).json({ error: 'Not found' });
-    const users = await storageRequest('/api/users');
-    const subscribers = channel.subscribers.map(id => users[id]).filter(u => u);
-    res.json({ ...channel, subscribers });
-  } catch (err) {
-    console.error(err);
-    res.status(500).json({ error: 'Storage error' });
-  }
+app.get('/channel/:id', (req, res) => {
+  const channel = channels.get(req.params.id);
+  if (!channel) return res.status(404).json({ error: 'Not found' });
+  const subscribers = Array.from(channel.subscribers).map(id => users.get(id)).filter(u => u);
+  res.json({ ...channel, subscribers });
 });
 
-app.post('/channel/subscribe', async (req, res) => {
+app.post('/channel/subscribe', (req, res) => {
   const { token, channelId } = req.body;
-  try {
-    const sessions = await storageRequest('/api/sessions');
-    const session = sessions[token];
-    if (!session) return res.status(401).json({ error: 'Unauthorized' });
-    const userId = session.userId;
-    const channels = await storageRequest('/api/channels');
-    const channel = channels[channelId];
-    if (!channel) return res.status(404).json({ error: 'Channel not found' });
-    if (!channel.subscribers.includes(userId)) {
-      channel.subscribers.push(userId);
-      await storageRequest('/api/channels/' + channelId, 'PUT', channel);
-    }
-    channel.subscribers.forEach(sid => {
-      const sockets = [...io.sockets.sockets.values()].filter(s => s.userId === sid);
-      sockets.forEach(s => s.emit('channel-updated', channel));
-    });
-    res.json({ success: true });
-  } catch (err) {
-    console.error(err);
-    res.status(500).json({ error: 'Storage error' });
-  }
+  const userId = sessions.get(token);
+  if (!userId) return res.status(401).json({ error: 'Unauthorized' });
+  const channel = channels.get(channelId);
+  if (!channel) return res.status(404).json({ error: 'Channel not found' });
+  channel.subscribers.add(userId);
+  channels.set(channelId, channel);
+  saveData();
+  channel.subscribers.forEach(sid => {
+    const sockets = [...io.sockets.sockets.values()].filter(s => s.userId === sid);
+    sockets.forEach(s => s.emit('channel-updated', channel));
+  });
+  res.json({ success: true });
 });
 
-app.post('/channel/unsubscribe', async (req, res) => {
+app.post('/channel/unsubscribe', (req, res) => {
   const { token, channelId } = req.body;
-  try {
-    const sessions = await storageRequest('/api/sessions');
-    const session = sessions[token];
-    if (!session) return res.status(401).json({ error: 'Unauthorized' });
-    const userId = session.userId;
-    const channels = await storageRequest('/api/channels');
-    const channel = channels[channelId];
-    if (!channel) return res.status(404).json({ error: 'Channel not found' });
-    channel.subscribers = channel.subscribers.filter(id => id !== userId);
-    await storageRequest('/api/channels/' + channelId, 'PUT', channel);
-    channel.subscribers.forEach(sid => {
-      const sockets = [...io.sockets.sockets.values()].filter(s => s.userId === sid);
-      sockets.forEach(s => s.emit('channel-updated', channel));
-    });
-    res.json({ success: true });
-  } catch (err) {
-    console.error(err);
-    res.status(500).json({ error: 'Storage error' });
-  }
+  const userId = sessions.get(token);
+  if (!userId) return res.status(401).json({ error: 'Unauthorized' });
+  const channel = channels.get(channelId);
+  if (!channel) return res.status(404).json({ error: 'Channel not found' });
+  channel.subscribers.delete(userId);
+  channels.set(channelId, channel);
+  saveData();
+  channel.subscribers.forEach(sid => {
+    const sockets = [...io.sockets.sockets.values()].filter(s => s.userId === sid);
+    sockets.forEach(s => s.emit('channel-updated', channel));
+  });
+  res.json({ success: true });
 });
 
-app.post('/channel/update', async (req, res) => {
+app.post('/channel/update', (req, res) => {
   const { token, channelId, name, description, avatar } = req.body;
-  try {
-    const sessions = await storageRequest('/api/sessions');
-    const session = sessions[token];
-    if (!session) return res.status(401).json({ error: 'Unauthorized' });
-    const userId = session.userId;
-    const channels = await storageRequest('/api/channels');
-    const channel = channels[channelId];
-    if (!channel) return res.status(404).json({ error: 'Channel not found' });
-    if (channel.ownerId !== userId) return res.status(403).json({ error: 'Not owner' });
-    if (name) channel.name = name;
-    if (description !== undefined) channel.description = description;
-    if (avatar !== undefined) channel.avatar = avatar;
-    await storageRequest('/api/channels/' + channelId, 'PUT', channel);
-    channel.subscribers.forEach(sid => {
-      const sockets = [...io.sockets.sockets.values()].filter(s => s.userId === sid);
-      sockets.forEach(s => s.emit('channel-updated', channel));
-    });
-    res.json({ success: true });
-  } catch (err) {
-    console.error(err);
-    res.status(500).json({ error: 'Storage error' });
-  }
+  const userId = sessions.get(token);
+  if (!userId) return res.status(401).json({ error: 'Unauthorized' });
+  const channel = channels.get(channelId);
+  if (!channel) return res.status(404).json({ error: 'Channel not found' });
+  if (channel.ownerId !== userId) return res.status(403).json({ error: 'Not owner' });
+  if (name) channel.name = name;
+  if (description !== undefined) channel.description = description;
+  if (avatar !== undefined) channel.avatar = avatar;
+  channels.set(channelId, channel);
+  saveData();
+  channel.subscribers.forEach(sid => {
+    const sockets = [...io.sockets.sockets.values()].filter(s => s.userId === sid);
+    sockets.forEach(s => s.emit('channel-updated', channel));
+  });
+  res.json({ success: true });
 });
 
-app.get('/my-groups', async (req, res) => {
+app.get('/my-groups', (req, res) => {
   const { token } = req.query;
-  try {
-    const sessions = await storageRequest('/api/sessions');
-    const session = sessions[token];
-    if (!session) return res.status(401).json({ error: 'Unauthorized' });
-    const userId = session.userId;
-    const groups = await storageRequest('/api/groups');
-    const userGroups = Object.values(groups).filter(g => g.members.includes(userId));
-    res.json(userGroups);
-  } catch (err) {
-    console.error(err);
-    res.status(500).json({ error: 'Storage error' });
-  }
+  const userId = sessions.get(token);
+  if (!userId) return res.status(401).json({ error: 'Unauthorized' });
+  const userGroups = [...groups.values()].filter(g => g.members.has(userId));
+  res.json(userGroups.map(g => ({ ...g, members: Array.from(g.members), admins: Array.from(g.admins) })));
 });
 
-app.get('/my-channels', async (req, res) => {
+app.get('/my-channels', (req, res) => {
   const { token } = req.query;
-  try {
-    const sessions = await storageRequest('/api/sessions');
-    const session = sessions[token];
-    if (!session) return res.status(401).json({ error: 'Unauthorized' });
-    const userId = session.userId;
-    const channels = await storageRequest('/api/channels');
-    const userChannels = Object.values(channels).filter(c => c.subscribers.includes(userId));
-    res.json(userChannels);
-  } catch (err) {
-    console.error(err);
-    res.status(500).json({ error: 'Storage error' });
-  }
+  const userId = sessions.get(token);
+  if (!userId) return res.status(401).json({ error: 'Unauthorized' });
+  const userChannels = [...channels.values()].filter(c => c.subscribers.has(userId));
+  res.json(userChannels.map(c => ({ ...c, subscribers: Array.from(c.subscribers) })));
 });
 
-io.use(async (socket, next) => {
+// ------------------- Socket.io -------------------
+io.use((socket, next) => {
   const token = socket.handshake.auth.token;
   if (!token) return next(new Error('Authentication required'));
-  try {
-    const sessions = await storageRequest('/api/sessions');
-    const session = sessions[token];
-    if (!session) return next(new Error('Invalid token'));
-    socket.userId = session.userId;
-    next();
-  } catch (err) {
-    next(new Error('Storage error'));
-  }
+  const userId = sessions.get(token);
+  if (!userId) return next(new Error('Invalid token'));
+  socket.userId = userId;
+  next();
 });
 
 io.on('connection', (socket) => {
@@ -473,85 +441,55 @@ io.on('connection', (socket) => {
   console.log(`User ${userId} connected`);
   socket.join(`user:${userId}`);
 
-  socket.on('get-conversations', async () => {
-    try {
-      const users = await storageRequest('/api/users');
-      const groups = await storageRequest('/api/groups');
-      const channels = await storageRequest('/api/channels');
-      const messages = await storageRequest('/api/messages');
-      
-      const userGroups = Object.values(groups).filter(g => g.members.includes(userId));
-      const userChannels = Object.values(channels).filter(c => c.subscribers.includes(userId));
-      const privateChats = new Set();
-      for (let convId in messages) {
-        if (convId.includes('_')) {
-          const [id1, id2] = convId.split('_');
-          if (id1 === userId || id2 === userId) privateChats.add(convId);
-        }
-      }
-      const convsList = {
-        private: Array.from(privateChats).map(convId => {
-          const otherId = convId.split('_').find(id => id !== userId);
-          const otherUser = users[otherId];
-          const lastMessage = messages[convId]?.[messages[convId].length - 1] || null;
-          return {
-            type: 'private', id: convId, name: otherUser?.displayName || otherId,
-            avatar: otherUser?.avatar || '', lastMessage
-          };
-        }),
-        groups: userGroups.map(g => ({ type: 'group', id: g.id, name: g.name, avatar: g.avatar })),
-        channels: userChannels.map(c => ({ type: 'channel', id: c.id, name: c.name, avatar: c.avatar }))
+  // Send initial conversations
+  const userGroups = [...groups.values()].filter(g => g.members.has(userId));
+  const userChannels = [...channels.values()].filter(c => c.subscribers.has(userId));
+  const privateChats = new Set();
+  for (let [convId, msgs] of messages.entries()) {
+    if (convId.includes('_')) {
+      const [id1, id2] = convId.split('_');
+      if (id1 === userId || id2 === userId) privateChats.add(convId);
+    }
+  }
+  const convsList = {
+    private: Array.from(privateChats).map(convId => {
+      const otherId = convId.split('_').find(id => id !== userId);
+      const otherUser = users.get(otherId);
+      return {
+        type: 'private', id: convId, name: otherUser?.displayName || otherId,
+        avatar: otherUser?.avatar || '', lastMessage: messages.get(convId)?.[messages.get(convId).length - 1] || null
       };
-      socket.emit('conversations', convsList);
-    } catch (err) {
-      console.error(err);
-    }
-  });
+    }),
+    groups: userGroups.map(g => ({ type: 'group', id: g.id, name: g.name, avatar: g.avatar })),
+    channels: userChannels.map(c => ({ type: 'channel', id: c.id, name: c.name, avatar: c.avatar }))
+  };
+  socket.emit('conversations', convsList);
 
-  socket.on('send-message', async (data) => {
-    const { convId, type, content } = data;
+  socket.on('send-message', (data) => {
+    const { convId, type, content, replyTo } = data;
     if (!convId || !content) return;
-    const messageId = generateId();
-    const timestamp = Date.now();
-    const message = { id: messageId, senderId: userId, type, content, timestamp };
-    try {
-      const allMessages = await storageRequest('/api/messages');
-      const convMessages = allMessages[convId] || [];
-      convMessages.push(message);
-      await storageRequest('/api/messages/' + convId, 'PUT', convMessages);
-      
-      let recipients = new Set();
-      if (convId.includes('_')) {
-        const [id1, id2] = convId.split('_');
-        recipients.add(id1); recipients.add(id2);
-      } else {
-        const groups = await storageRequest('/api/groups');
-        const channels = await storageRequest('/api/channels');
-        if (groups[convId]) {
-          groups[convId].members.forEach(m => recipients.add(m));
-        } else if (channels[convId]) {
-          channels[convId].subscribers.forEach(s => recipients.add(s));
-        }
-      }
-      recipients.forEach(uid => {
-        io.to(`user:${uid}`).emit('new-message', { convId, message });
-      });
-    } catch (err) {
-      console.error(err);
-    }
+    const message = {
+      id: generateId(), senderId: userId, type: type || 'text', content, timestamp: Date.now(), replyTo
+    };
+    saveMessage(convId, message);
+    let recipients = new Set();
+    if (convId.includes('_')) {
+      const [id1, id2] = convId.split('_');
+      recipients.add(id1); recipients.add(id2);
+    } else if (groups.has(convId)) {
+      groups.get(convId).members.forEach(m => recipients.add(m));
+    } else if (channels.has(convId)) {
+      channels.get(convId).subscribers.forEach(s => recipients.add(s));
+    } else return;
+    recipients.forEach(uid => io.to(`user:${uid}`).emit('new-message', { convId, message }));
   });
 
-  socket.on('load-messages', async (convId, callback) => {
-    try {
-      const allMessages = await storageRequest('/api/messages');
-      const msgs = allMessages[convId] || [];
-      callback(msgs.slice(-100));
-    } catch (err) {
-      console.error(err);
-      callback([]);
-    }
+  socket.on('load-messages', (convId, callback) => {
+    const msgs = messages.get(convId) || [];
+    callback(msgs.slice(-100));
   });
 
+  // WebRTC signaling
   socket.on('call-user', ({ targetUserId, offer }) => {
     io.to(`user:${targetUserId}`).emit('incoming-call', { from: userId, offer });
   });
@@ -574,4 +512,5 @@ io.on('connection', (socket) => {
 });
 
 const PORT = process.env.PORT || 3000;
+loadData();
 server.listen(PORT, () => console.log(`SkyMessage running on http://localhost:${PORT}`));
