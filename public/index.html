@@ -19,7 +19,6 @@
     }
     #app { display: flex; height: 100vh; }
 
-    /* Sidebar */
     .sidebar {
       width: 280px;
       background: #111114;
@@ -56,7 +55,6 @@
     .conv-name { font-weight: 600; }
     .conv-last-msg { font-size: 12px; color: #aaa; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 
-    /* Chat area */
     .chat-area { flex: 1; display: flex; flex-direction: column; background: #0a0a0f; }
     .chat-header {
       padding: 12px 16px; background: #111114; border-bottom: 1px solid #222;
@@ -68,7 +66,6 @@
       cursor: pointer; margin-left: 12px;
     }
 
-    /* Members panel */
     .members-panel {
       width: 280px; background: #111114; border-left: 1px solid #222;
       display: none; flex-direction: column; overflow-y: auto;
@@ -84,7 +81,6 @@
     }
     .member-item:hover { background: #1a1a1f; }
 
-    /* Messages */
     .messages-container { flex: 1; overflow-y: auto; padding: 16px; display: flex; flex-direction: column; gap: 8px; }
     .message {
       max-width: 70%; padding: 8px 12px; border-radius: 18px;
@@ -96,7 +92,6 @@
     .message-file { display: flex; align-items: center; gap: 8px; background: #2a2a32; padding: 8px; border-radius: 12px; cursor: pointer; }
     .message-time { font-size: 10px; color: #aaa; margin-top: 4px; text-align: right; }
 
-    /* Input area */
     .input-area {
       padding: 12px; background: #111114; display: flex; gap: 8px;
       align-items: center; border-top: 1px solid #222;
@@ -106,7 +101,6 @@
     .file-input-label { background: #2c6e9e; border-radius: 50%; width: 40px; height: 40px; display: flex; align-items: center; justify-content: center; cursor: pointer; }
     .emoji-picker { position: absolute; bottom: 70px; background: #1e1e24; border-radius: 12px; padding: 8px; display: none; grid-template-columns: repeat(6, 1fr); gap: 8px; max-width: 300px; z-index: 100; }
 
-    /* Modals */
     .modal { position: fixed; top: 0; left: 0; width: 100%; height: 100%; background: rgba(0,0,0,0.6); display: none; justify-content: center; align-items: center; z-index: 900; }
     .modal-content { background: #111114; border-radius: 24px; padding: 24px; width: 90%; max-width: 400px; max-height: 80vh; overflow-y: auto; }
     .modal-content input, .modal-content textarea { width: 100%; padding: 10px; margin: 8px 0; border-radius: 12px; border: none; background: #1e1e24; color: white; }
@@ -126,7 +120,6 @@
     .menu-toggle { display: none; background: none; border: none; color: white; font-size: 24px; cursor: pointer; margin-right: 10px; }
     .close-panel-btn { background: none; border: none; color: white; font-size: 20px; cursor: pointer; }
 
-    /* Мобильный режим (активируется кнопкой) */
     body.mobile-mode .sidebar {
       position: fixed;
       left: -280px;
@@ -180,6 +173,7 @@
         <span id="chatName"></span>
       </div>
       <div class="chat-actions">
+        <button id="mobileModeBtn" title="Режим телефона">📱</button>
         <button id="membersBtn">👥</button>
         <button id="callBtn">📞</button>
         <button id="settingsBtn" style="display: none;">⚙️</button>
@@ -204,7 +198,7 @@
   </div>
 </div>
 
-<!-- Модальные окна (все стандартные) -->
+<!-- Модальные окна -->
 <div id="loginModal" class="modal"><div class="modal-content"><h3>Вход в SkyMessage</h3><input type="text" id="loginLogin" placeholder="Логин"><input type="password" id="loginPassword" placeholder="Пароль"><button id="doLoginBtn">Войти</button><button id="toRegisterBtn">Нет аккаунта? Зарегистрироваться</button></div></div>
 <div id="registerModal" class="modal"><div class="modal-content"><h3>Регистрация</h3><input type="text" id="regLogin" placeholder="Логин"><input type="password" id="regPassword" placeholder="Пароль"><input type="text" id="regDisplayName" placeholder="Имя (необязательно)"><button id="doRegisterBtn">Зарегистрироваться</button><button id="toLoginBtn">Уже есть аккаунт? Войти</button></div></div>
 <div id="profileModal" class="modal"><div class="modal-content"><h3>Мой профиль</h3><img id="modalAvatar" width="80" style="border-radius:50%;"><br><input type="text" id="editDisplayName" placeholder="Имя"><br><input type="text" id="editStatus" placeholder="Статус"><br><input type="file" id="avatarUpload" accept="image/*"><br><button id="saveProfileBtn">Сохранить</button><button id="closeProfileBtn">Закрыть</button></div></div>
@@ -778,30 +772,10 @@
     }, 300);
   });
 
-  // ========== ПЛАВАЮЩАЯ КНОПКА ПЕРЕКЛЮЧЕНИЯ МОБИЛЬНОГО РЕЖИМА (левый нижний угол) ==========
-  (function() {
-    const btn = document.createElement('button');
-    btn.innerText = '📱';
-    btn.title = 'Режим телефона';
-    btn.style.cssText = `
-      position: fixed;
-      bottom: 20px;
-      left: 20px;
-      width: 50px;
-      height: 50px;
-      border-radius: 50%;
-      background: #2c6e9e;
-      color: white;
-      border: none;
-      font-size: 24px;
-      cursor: pointer;
-      z-index: 9999;
-      box-shadow: 0 2px 8px rgba(0,0,0,0.3);
-      display: flex;
-      align-items: center;
-      justify-content: center;
-    `;
-    btn.onclick = () => {
+  // Кнопка переключения мобильного режима
+  const mobileModeBtn = document.getElementById('mobileModeBtn');
+  if (mobileModeBtn) {
+    mobileModeBtn.onclick = () => {
       document.body.classList.toggle('mobile-mode');
       if (document.body.classList.contains('mobile-mode')) {
         document.querySelector('meta[name="viewport"]').setAttribute('content', 'width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no');
@@ -811,13 +785,15 @@
         alert('Обычный режим');
       }
     };
-    document.body.appendChild(btn);
-  })();
+  }
 
-  // Гамбургер для мобильного режима
-  document.getElementById('menuToggle').addEventListener('click', () => {
-    document.getElementById('sidebar').classList.toggle('show');
-  });
+  // Гамбургер
+  const menuToggle = document.getElementById('menuToggle');
+  if (menuToggle) {
+    menuToggle.addEventListener('click', () => {
+      document.getElementById('sidebar').classList.toggle('show');
+    });
+  }
 
   // Auth
   document.getElementById('doLoginBtn').onclick = () => login(document.getElementById('loginLogin').value, document.getElementById('loginPassword').value);
