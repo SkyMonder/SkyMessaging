@@ -28,7 +28,7 @@ app.use((req, res, next) => {
 
 app.use(express.static(path.join(__dirname, 'public')));
 
-// Хранилище в файле
+// Локальное хранилище в файле
 let users = new Map();
 let sessions = new Map();
 let messages = new Map();
@@ -464,10 +464,10 @@ io.on('connection', (socket) => {
   socket.emit('conversations', convsList);
 
   socket.on('send-message', (data) => {
-    const { convId, type, content, replyTo } = data;
+    const { convId, type, content } = data;
     if (!convId || !content) return;
     const message = {
-      id: generateId(), senderId: userId, type: type || 'text', content, timestamp: Date.now(), replyTo
+      id: generateId(), senderId: userId, type: type || 'text', content, timestamp: Date.now()
     };
     saveMessage(convId, message);
     let recipients = new Set();
@@ -501,10 +501,6 @@ io.on('connection', (socket) => {
   });
   socket.on('toggle-media', ({ targetUserId, type, enabled }) => {
     io.to(`user:${targetUserId}`).emit('media-toggled', { from: userId, type, enabled });
-  });
-
-  socket.on('disconnect', () => {
-    console.log(`User ${userId} disconnected`);
   });
 });
 
