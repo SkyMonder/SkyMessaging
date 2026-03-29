@@ -9,12 +9,7 @@
   <link rel="manifest" href="/manifest.json">
   <meta name="theme-color" content="#4a76a8">
   <style>
-    * {
-      box-sizing: border-box;
-      margin: 0;
-      padding: 0;
-    }
-
+    * { box-sizing: border-box; margin: 0; padding: 0; }
     body {
       font-family: system-ui, -apple-system, 'Segoe UI', Roboto, sans-serif;
       background: #0a0a0f;
@@ -22,11 +17,7 @@
       height: 100vh;
       overflow: hidden;
     }
-
-    #app {
-      display: flex;
-      height: 100vh;
-    }
+    #app { display: flex; height: 100vh; }
 
     /* Sidebar */
     .sidebar {
@@ -37,7 +28,6 @@
       flex-direction: column;
       transition: transform 0.2s ease;
     }
-
     .sidebar-header {
       padding: 16px;
       border-bottom: 1px solid #222;
@@ -47,417 +37,94 @@
       flex-wrap: wrap;
       gap: 8px;
     }
-
-    .user-info {
-      display: flex;
-      align-items: center;
-      gap: 12px;
-      cursor: pointer;
+    .user-info { display: flex; align-items: center; gap: 12px; cursor: pointer; }
+    .avatar { width: 40px; height: 40px; border-radius: 50%; object-fit: cover; background: #2a2a2e; }
+    .sidebar-search, .sidebar-search-group { padding: 12px; border-bottom: 1px solid #222; }
+    .sidebar-search input, .sidebar-search-group input {
+      width: 100%; padding: 8px 12px; border-radius: 24px; border: none;
+      background: #1e1e24; color: white; outline: none;
     }
-
-    .avatar {
-      width: 40px;
-      height: 40px;
-      border-radius: 50%;
-      object-fit: cover;
-      background: #2a2a2e;
-    }
-
-    .sidebar-search,
-    .sidebar-search-group {
-      padding: 12px;
-      border-bottom: 1px solid #222;
-    }
-
-    .sidebar-search input,
-    .sidebar-search-group input {
-      width: 100%;
-      padding: 8px 12px;
-      border-radius: 24px;
-      border: none;
-      background: #1e1e24;
-      color: white;
-      outline: none;
-    }
-
-    .conversations-list {
-      flex: 1;
-      overflow-y: auto;
-    }
-
+    .conversations-list { flex: 1; overflow-y: auto; }
     .conv-item {
-      padding: 12px 16px;
-      display: flex;
-      align-items: center;
-      gap: 12px;
-      cursor: pointer;
-      border-bottom: 1px solid #1a1a1e;
+      padding: 12px 16px; display: flex; align-items: center; gap: 12px;
+      cursor: pointer; border-bottom: 1px solid #1a1a1e;
     }
-
-    .conv-item:hover {
-      background: #1a1a1f;
-    }
-
-    .conv-item.active {
-      background: #2a2a32;
-    }
-
-    .conv-avatar {
-      width: 48px;
-      height: 48px;
-      border-radius: 50%;
-      object-fit: cover;
-      background: #2a2a2e;
-    }
-
-    .conv-details {
-      flex: 1;
-    }
-
-    .conv-name {
-      font-weight: 600;
-    }
-
-    .conv-last-msg {
-      font-size: 12px;
-      color: #aaa;
-      white-space: nowrap;
-      overflow: hidden;
-      text-overflow: ellipsis;
-    }
+    .conv-item:hover { background: #1a1a1f; }
+    .conv-item.active { background: #2a2a32; }
+    .conv-avatar { width: 48px; height: 48px; border-radius: 50%; object-fit: cover; background: #2a2a2e; }
+    .conv-details { flex: 1; }
+    .conv-name { font-weight: 600; }
+    .conv-last-msg { font-size: 12px; color: #aaa; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 
     /* Chat area */
-    .chat-area {
-      flex: 1;
-      display: flex;
-      flex-direction: column;
-      background: #0a0a0f;
-    }
-
+    .chat-area { flex: 1; display: flex; flex-direction: column; background: #0a0a0f; }
     .chat-header {
-      padding: 12px 16px;
-      background: #111114;
-      border-bottom: 1px solid #222;
-      display: flex;
-      justify-content: space-between;
-      align-items: center;
+      padding: 12px 16px; background: #111114; border-bottom: 1px solid #222;
+      display: flex; justify-content: space-between; align-items: center;
     }
-
-    .chat-header-left {
-      display: flex;
-      align-items: center;
-      gap: 12px;
-      cursor: pointer;
-    }
-
+    .chat-header-left { display: flex; align-items: center; gap: 12px; cursor: pointer; }
     .chat-actions button {
-      background: none;
-      border: none;
-      color: white;
-      font-size: 20px;
-      cursor: pointer;
-      margin-left: 12px;
+      background: none; border: none; color: white; font-size: 20px;
+      cursor: pointer; margin-left: 12px;
     }
 
     /* Members panel */
     .members-panel {
-      width: 280px;
-      background: #111114;
-      border-left: 1px solid #222;
-      display: none;
-      flex-direction: column;
-      overflow-y: auto;
+      width: 280px; background: #111114; border-left: 1px solid #222;
+      display: none; flex-direction: column; overflow-y: auto;
     }
-
-    .members-panel.show {
-      display: flex;
-    }
-
+    .members-panel.show { display: flex; }
     .members-header {
-      padding: 16px;
-      border-bottom: 1px solid #222;
-      font-weight: bold;
-      display: flex;
-      justify-content: space-between;
-      align-items: center;
+      padding: 16px; border-bottom: 1px solid #222; font-weight: bold;
+      display: flex; justify-content: space-between; align-items: center;
     }
-
     .member-item {
-      padding: 12px;
-      display: flex;
-      align-items: center;
-      gap: 12px;
-      cursor: pointer;
-      border-bottom: 1px solid #1a1a1e;
+      padding: 12px; display: flex; align-items: center; gap: 12px;
+      cursor: pointer; border-bottom: 1px solid #1a1a1e;
     }
-
-    .member-item:hover {
-      background: #1a1a1f;
-    }
+    .member-item:hover { background: #1a1a1f; }
 
     /* Messages */
-    .messages-container {
-      flex: 1;
-      overflow-y: auto;
-      padding: 16px;
-      display: flex;
-      flex-direction: column;
-      gap: 8px;
-    }
-
+    .messages-container { flex: 1; overflow-y: auto; padding: 16px; display: flex; flex-direction: column; gap: 8px; }
     .message {
-      max-width: 70%;
-      padding: 8px 12px;
-      border-radius: 18px;
-      background: #1e1e24;
-      align-self: flex-start;
+      max-width: 70%; padding: 8px 12px; border-radius: 18px;
+      background: #1e1e24; align-self: flex-start;
     }
-
-    .message.own {
-      align-self: flex-end;
-      background: #2c6e9e;
-    }
-
-    .message-sender {
-      font-size: 12px;
-      font-weight: bold;
-      margin-bottom: 4px;
-      cursor: pointer;
-    }
-
-    .message-text {
-      word-wrap: break-word;
-    }
-
-    .message-file {
-      display: flex;
-      align-items: center;
-      gap: 8px;
-      background: #2a2a32;
-      padding: 8px;
-      border-radius: 12px;
-      cursor: pointer;
-    }
-
-    .message-time {
-      font-size: 10px;
-      color: #aaa;
-      margin-top: 4px;
-      text-align: right;
-    }
+    .message.own { align-self: flex-end; background: #2c6e9e; }
+    .message-sender { font-size: 12px; font-weight: bold; margin-bottom: 4px; cursor: pointer; }
+    .message-text { word-wrap: break-word; }
+    .message-file { display: flex; align-items: center; gap: 8px; background: #2a2a32; padding: 8px; border-radius: 12px; cursor: pointer; }
+    .message-time { font-size: 10px; color: #aaa; margin-top: 4px; text-align: right; }
 
     /* Input area */
     .input-area {
-      padding: 12px;
-      background: #111114;
-      display: flex;
-      gap: 8px;
-      align-items: center;
-      border-top: 1px solid #222;
+      padding: 12px; background: #111114; display: flex; gap: 8px;
+      align-items: center; border-top: 1px solid #222;
     }
-
-    .input-area input {
-      flex: 1;
-      padding: 10px 14px;
-      border-radius: 24px;
-      border: none;
-      background: #1e1e24;
-      color: white;
-      outline: none;
-    }
-
-    .input-area button {
-      background: #2c6e9e;
-      border: none;
-      color: white;
-      width: 40px;
-      height: 40px;
-      border-radius: 50%;
-      cursor: pointer;
-      font-size: 18px;
-    }
-
-    .file-input-label {
-      background: #2c6e9e;
-      border-radius: 50%;
-      width: 40px;
-      height: 40px;
-      display: flex;
-      align-items: center;
-      justify-content: center;
-      cursor: pointer;
-    }
-
-    .emoji-picker {
-      position: absolute;
-      bottom: 70px;
-      background: #1e1e24;
-      border-radius: 12px;
-      padding: 8px;
-      display: none;
-      grid-template-columns: repeat(6, 1fr);
-      gap: 8px;
-      max-width: 300px;
-      z-index: 100;
-    }
+    .input-area input { flex: 1; padding: 10px 14px; border-radius: 24px; border: none; background: #1e1e24; color: white; outline: none; }
+    .input-area button { background: #2c6e9e; border: none; color: white; width: 40px; height: 40px; border-radius: 50%; cursor: pointer; font-size: 18px; }
+    .file-input-label { background: #2c6e9e; border-radius: 50%; width: 40px; height: 40px; display: flex; align-items: center; justify-content: center; cursor: pointer; }
+    .emoji-picker { position: absolute; bottom: 70px; background: #1e1e24; border-radius: 12px; padding: 8px; display: none; grid-template-columns: repeat(6, 1fr); gap: 8px; max-width: 300px; z-index: 100; }
 
     /* Modals */
-    .modal {
-      position: fixed;
-      top: 0;
-      left: 0;
-      width: 100%;
-      height: 100%;
-      background: rgba(0, 0, 0, 0.6);
-      display: none;
-      justify-content: center;
-      align-items: center;
-      z-index: 900;
-    }
-
-    .modal-content {
-      background: #111114;
-      border-radius: 24px;
-      padding: 24px;
-      width: 90%;
-      max-width: 400px;
-      max-height: 80vh;
-      overflow-y: auto;
-    }
-
-    .modal-content input,
-    .modal-content textarea {
-      width: 100%;
-      padding: 10px;
-      margin: 8px 0;
-      border-radius: 12px;
-      border: none;
-      background: #1e1e24;
-      color: white;
-    }
-
-    .modal-content button {
-      margin-top: 12px;
-      padding: 10px 16px;
-      background: #2c6e9e;
-      border: none;
-      border-radius: 40px;
-      color: white;
-      cursor: pointer;
-    }
-
-    .search-results {
-      margin-top: 12px;
-      max-height: 200px;
-      overflow-y: auto;
-    }
-
-    .search-user-item {
-      padding: 8px;
-      background: #1e1e24;
-      margin-bottom: 4px;
-      border-radius: 12px;
-      cursor: pointer;
-      display: flex;
-      align-items: center;
-      gap: 8px;
-    }
-
-    .search-category {
-      padding: 8px;
-      background: #2a2a32;
-      font-weight: bold;
-      margin-top: 4px;
-    }
-
-    /* Call modal */
-    .call-modal {
-      position: fixed;
-      top: 0;
-      left: 0;
-      width: 100%;
-      height: 100%;
-      background: rgba(0, 0, 0, 0.9);
-      display: none;
-      justify-content: center;
-      align-items: center;
-      z-index: 1000;
-    }
-
-    .call-container {
-      background: #111114;
-      border-radius: 24px;
-      padding: 20px;
-      width: 90%;
-      max-width: 700px;
-      text-align: center;
-    }
-
-    .video-container {
-      display: flex;
-      gap: 16px;
-      justify-content: center;
-      margin: 16px 0;
-      flex-wrap: wrap;
-    }
-
-    video {
-      width: 45%;
-      background: black;
-      border-radius: 12px;
-    }
-
-    .call-controls {
-      display: flex;
-      justify-content: center;
-      gap: 16px;
-      margin-top: 16px;
-    }
-
-    .call-controls button {
-      padding: 10px 20px;
-      border: none;
-      border-radius: 40px;
-      cursor: pointer;
-      font-size: 16px;
-    }
-
-    .group-settings {
-      margin-top: 16px;
-      border-top: 1px solid #222;
-      padding-top: 16px;
-    }
-
-    .admin-checkbox {
-      margin-left: auto;
-    }
-
-    .logout-btn {
-      background: none;
-      border: none;
-      color: #ff6b6b;
-      cursor: pointer;
-      font-size: 14px;
-      margin-left: 12px;
-    }
-
-    .menu-toggle {
-      display: none;
-      background: none;
-      border: none;
-      color: white;
-      font-size: 24px;
-      cursor: pointer;
-      margin-right: 10px;
-    }
-
-    .close-panel-btn {
-      background: none;
-      border: none;
-      color: white;
-      font-size: 20px;
-      cursor: pointer;
-    }
+    .modal { position: fixed; top: 0; left: 0; width: 100%; height: 100%; background: rgba(0,0,0,0.6); display: none; justify-content: center; align-items: center; z-index: 900; }
+    .modal-content { background: #111114; border-radius: 24px; padding: 24px; width: 90%; max-width: 400px; max-height: 80vh; overflow-y: auto; }
+    .modal-content input, .modal-content textarea { width: 100%; padding: 10px; margin: 8px 0; border-radius: 12px; border: none; background: #1e1e24; color: white; }
+    .modal-content button { margin-top: 12px; padding: 10px 16px; background: #2c6e9e; border: none; border-radius: 40px; color: white; cursor: pointer; }
+    .search-results { margin-top: 12px; max-height: 200px; overflow-y: auto; }
+    .search-user-item { padding: 8px; background: #1e1e24; margin-bottom: 4px; border-radius: 12px; cursor: pointer; display: flex; align-items: center; gap: 8px; }
+    .search-category { padding: 8px; background: #2a2a32; font-weight: bold; margin-top: 4px; }
+    .call-modal { position: fixed; top: 0; left: 0; width: 100%; height: 100%; background: rgba(0,0,0,0.9); display: none; justify-content: center; align-items: center; z-index: 1000; }
+    .call-container { background: #111114; border-radius: 24px; padding: 20px; width: 90%; max-width: 700px; text-align: center; }
+    .video-container { display: flex; gap: 16px; justify-content: center; margin: 16px 0; flex-wrap: wrap; }
+    video { width: 45%; background: black; border-radius: 12px; }
+    .call-controls { display: flex; justify-content: center; gap: 16px; margin-top: 16px; }
+    .call-controls button { padding: 10px 20px; border: none; border-radius: 40px; cursor: pointer; font-size: 16px; }
+    .group-settings { margin-top: 16px; border-top: 1px solid #222; padding-top: 16px; }
+    .admin-checkbox { margin-left: auto; }
+    .logout-btn { background: none; border: none; color: #ff6b6b; cursor: pointer; font-size: 14px; margin-left: 12px; }
+    .menu-toggle { display: none; background: none; border: none; color: white; font-size: 24px; cursor: pointer; margin-right: 10px; }
+    .close-panel-btn { background: none; border: none; color: white; font-size: 20px; cursor: pointer; }
 
     /* Мобильный режим (активируется кнопкой) */
     body.mobile-mode .sidebar {
@@ -467,11 +134,7 @@
       height: 100%;
       transition: left 0.2s;
     }
-
-    body.mobile-mode .sidebar.show {
-      left: 0;
-    }
-
+    body.mobile-mode .sidebar.show { left: 0; }
     body.mobile-mode .members-panel {
       position: fixed;
       right: -280px;
@@ -479,19 +142,9 @@
       height: 100%;
       transition: right 0.2s;
     }
-
-    body.mobile-mode .members-panel.show {
-      right: 0;
-    }
-
-    body.mobile-mode .menu-toggle {
-      display: inline-block;
-    }
-
-    body.mobile-mode .chat-header-left .avatar {
-      width: 36px;
-      height: 36px;
-    }
+    body.mobile-mode .members-panel.show { right: 0; }
+    body.mobile-mode .menu-toggle { display: inline-block; }
+    body.mobile-mode .chat-header-left .avatar { width: 36px; height: 36px; }
   </style>
 </head>
 <body>
@@ -527,7 +180,6 @@
         <span id="chatName"></span>
       </div>
       <div class="chat-actions">
-        <button id="mobileModeBtn" title="Режим телефона">📱</button>
         <button id="membersBtn">👥</button>
         <button id="callBtn">📞</button>
         <button id="settingsBtn" style="display: none;">⚙️</button>
@@ -552,7 +204,7 @@
   </div>
 </div>
 
-<!-- Модальные окна -->
+<!-- Модальные окна (все стандартные) -->
 <div id="loginModal" class="modal"><div class="modal-content"><h3>Вход в SkyMessage</h3><input type="text" id="loginLogin" placeholder="Логин"><input type="password" id="loginPassword" placeholder="Пароль"><button id="doLoginBtn">Войти</button><button id="toRegisterBtn">Нет аккаунта? Зарегистрироваться</button></div></div>
 <div id="registerModal" class="modal"><div class="modal-content"><h3>Регистрация</h3><input type="text" id="regLogin" placeholder="Логин"><input type="password" id="regPassword" placeholder="Пароль"><input type="text" id="regDisplayName" placeholder="Имя (необязательно)"><button id="doRegisterBtn">Зарегистрироваться</button><button id="toLoginBtn">Уже есть аккаунт? Войти</button></div></div>
 <div id="profileModal" class="modal"><div class="modal-content"><h3>Мой профиль</h3><img id="modalAvatar" width="80" style="border-radius:50%;"><br><input type="text" id="editDisplayName" placeholder="Имя"><br><input type="text" id="editStatus" placeholder="Статус"><br><input type="file" id="avatarUpload" accept="image/*"><br><button id="saveProfileBtn">Сохранить</button><button id="closeProfileBtn">Закрыть</button></div></div>
@@ -1126,18 +778,41 @@
     }, 300);
   });
 
-  // Кнопка переключения мобильного режима
-  document.getElementById('mobileModeBtn').addEventListener('click', () => {
-    document.body.classList.toggle('mobile-mode');
-    if (document.body.classList.contains('mobile-mode')) {
-      // Принудительно закрываем сайдбар
-      document.getElementById('sidebar').classList.remove('show');
-      // Отключаем масштабирование жестами
-      document.querySelector('meta[name="viewport"]').setAttribute('content', 'width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no');
-    } else {
-      document.querySelector('meta[name="viewport"]').setAttribute('content', 'width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=yes');
-    }
-  });
+  // ========== ПЛАВАЮЩАЯ КНОПКА ПЕРЕКЛЮЧЕНИЯ МОБИЛЬНОГО РЕЖИМА (левый нижний угол) ==========
+  (function() {
+    const btn = document.createElement('button');
+    btn.innerText = '📱';
+    btn.title = 'Режим телефона';
+    btn.style.cssText = `
+      position: fixed;
+      bottom: 20px;
+      left: 20px;
+      width: 50px;
+      height: 50px;
+      border-radius: 50%;
+      background: #2c6e9e;
+      color: white;
+      border: none;
+      font-size: 24px;
+      cursor: pointer;
+      z-index: 9999;
+      box-shadow: 0 2px 8px rgba(0,0,0,0.3);
+      display: flex;
+      align-items: center;
+      justify-content: center;
+    `;
+    btn.onclick = () => {
+      document.body.classList.toggle('mobile-mode');
+      if (document.body.classList.contains('mobile-mode')) {
+        document.querySelector('meta[name="viewport"]').setAttribute('content', 'width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no');
+        alert('Мобильный режим включен. Используйте ☰ для открытия меню.');
+      } else {
+        document.querySelector('meta[name="viewport"]').setAttribute('content', 'width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=yes');
+        alert('Обычный режим');
+      }
+    };
+    document.body.appendChild(btn);
+  })();
 
   // Гамбургер для мобильного режима
   document.getElementById('menuToggle').addEventListener('click', () => {
