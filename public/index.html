@@ -12,12 +12,12 @@
   <link rel="manifest" href="/manifest.json">
   <meta name="theme-color" content="#4a76a8">
   <style>
-    /* ========== ВСЕ СТИЛИ (те же, что были в рабочей версии) ========== */
+    /* ========== БАЗОВЫЕ СТИЛИ ========== */
     * { box-sizing: border-box; margin: 0; padding: 0; }
     body { font-family: system-ui, -apple-system, 'Segoe UI', Roboto, sans-serif; background: #0a0a0f; color: #eef; height: 100vh; overflow: hidden; }
     #app { display: flex; height: 100vh; }
     .sidebar { width: 280px; background: #111114; border-right: 1px solid #222; display: flex; flex-direction: column; transition: transform 0.2s ease; }
-    .sidebar-header { padding: 16px; border-bottom: 1px solid #222; display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 8px; position: relative; }
+    .sidebar-header { padding: 16px; border-bottom: 1px solid #222; display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 8px; }
     .user-info { display: flex; align-items: center; gap: 12px; cursor: pointer; }
     .avatar { width: 40px; height: 40px; border-radius: 50%; object-fit: cover; background: #2a2a2e; }
     .sidebar-search, .sidebar-search-group { padding: 12px; border-bottom: 1px solid #222; }
@@ -69,9 +69,23 @@
     .logout-btn { background: none; border: none; color: #ff6b6b; cursor: pointer; font-size: 14px; margin-left: 12px; }
     .menu-toggle { display: none; background: none; border: none; color: white; font-size: 24px; cursor: pointer; margin-right: 10px; }
     .close-panel-btn { background: none; border: none; color: white; font-size: 20px; cursor: pointer; }
-    body.mobile-mode .sidebar { position: fixed; left: -280px; z-index: 1000; height: 100%; transition: left 0.2s; }
+
+    /* Мобильный режим */
+    body.mobile-mode .sidebar {
+      position: fixed;
+      left: -280px;
+      z-index: 1000;
+      height: 100%;
+      transition: left 0.2s;
+    }
     body.mobile-mode .sidebar.show { left: 0; }
-    body.mobile-mode .members-panel { position: fixed; right: -280px; z-index: 1000; height: 100%; transition: right 0.2s; }
+    body.mobile-mode .members-panel {
+      position: fixed;
+      right: -280px;
+      z-index: 1000;
+      height: 100%;
+      transition: right 0.2s;
+    }
     body.mobile-mode .members-panel.show { right: 0; }
     body.mobile-mode .menu-toggle { display: inline-block; }
     body.mobile-mode .chat-header-left .avatar { width: 36px; height: 36px; }
@@ -81,7 +95,6 @@
 <div id="app">
   <div class="sidebar" id="sidebar">
     <div class="sidebar-header" id="sidebarHeader">
-      <!-- Гамбургер будет создан скриптом, но оставим место -->
       <div class="user-info" id="profileBtn">
         <img class="avatar" id="currentAvatar" src="" alt="avatar">
         <span id="currentDisplayName"></span>
@@ -135,7 +148,7 @@
   </div>
 </div>
 
-<!-- Модальные окна (сокращённо, они все есть) -->
+<!-- Модальные окна (сокращены для экономии места, но они все есть) -->
 <div id="loginModal" class="modal"><div class="modal-content"><h3>Вход в SkyMessage</h3><input type="text" id="loginLogin" placeholder="Логин"><input type="password" id="loginPassword" placeholder="Пароль"><button id="doLoginBtn">Войти</button><button id="toRegisterBtn">Нет аккаунта? Зарегистрироваться</button></div></div>
 <div id="registerModal" class="modal"><div class="modal-content"><h3>Регистрация</h3><input type="text" id="regLogin" placeholder="Логин"><input type="password" id="regPassword" placeholder="Пароль"><input type="text" id="regDisplayName" placeholder="Имя (необязательно)"><button id="doRegisterBtn">Зарегистрироваться</button><button id="toLoginBtn">Уже есть аккаунт? Войти</button></div></div>
 <div id="profileModal" class="modal"><div class="modal-content"><h3>Мой профиль</h3><img id="modalAvatar" width="80" style="border-radius:50%;"><br><input type="text" id="editDisplayName" placeholder="Имя"><br><input type="text" id="editStatus" placeholder="Статус"><br><input type="file" id="avatarUpload" accept="image/*"><br><button id="saveProfileBtn">Сохранить</button><button id="closeProfileBtn">Закрыть</button></div></div>
@@ -149,7 +162,7 @@
 
 <script src="/socket.io/socket.io.js"></script>
 <script>
-  // ========== ВСЯ ЛОГИКА МЕССЕНДЖЕРА (скопирована из предыдущей рабочей версии) ==========
+  // ========== ВСЯ ЛОГИКА МЕССЕНДЖЕРА (сокращена для ясности, но полная) ==========
   let currentUser = null;
   let token = localStorage.getItem('token');
   let socket = null;
@@ -251,10 +264,7 @@
     socket.on('call-ended', () => endCall());
   }
 
-  async function loadConversations() {
-    if (!socket) return;
-    socket.emit('get-conversations');
-  }
+  async function loadConversations() { if (!socket) return; socket.emit('get-conversations'); }
 
   function renderConversations(convs) {
     const container = document.getElementById('conversationsList');
@@ -313,9 +323,7 @@
           settingsDiv.style.display = 'block';
           settingsDiv.innerHTML = `<button id="groupSettingsBtn">Настройки группы</button>`;
           document.getElementById('groupSettingsBtn').onclick = () => showGroupSettings(group);
-        } else {
-          settingsDiv.style.display = 'none';
-        }
+        } else { settingsDiv.style.display = 'none'; }
         document.getElementById('membersPanel').classList.add('show');
       }
     } else if (currentConvType === 'channel') {
@@ -337,14 +345,10 @@
           settingsDiv.style.display = 'block';
           settingsDiv.innerHTML = `<button id="channelSettingsBtn">Настройки канала</button>`;
           document.getElementById('channelSettingsBtn').onclick = () => showChannelSettings(channel);
-        } else {
-          settingsDiv.style.display = 'none';
-        }
+        } else { settingsDiv.style.display = 'none'; }
         document.getElementById('membersPanel').classList.add('show');
       }
-    } else {
-      document.getElementById('membersPanel').classList.remove('show');
-    }
+    } else { document.getElementById('membersPanel').classList.remove('show'); }
   }
 
   function showGroupSettings(group) {
@@ -477,9 +481,7 @@
       document.body.appendChild(link);
       link.click();
       document.body.removeChild(link);
-    } else {
-      alert('Файл не найден');
-    }
+    } else { alert('Файл не найден'); }
   }
 
   async function sendMessage(text, file = null) {
@@ -503,12 +505,8 @@
     currentCall.targetUserId = targetUserId;
     const pc = new RTCPeerConnection({ iceServers: [{ urls: 'stun:stun.l.google.com:19302' }] });
     currentCall.peerConnection = pc;
-    pc.onicecandidate = (event) => {
-      if (event.candidate) socket.emit('ice-candidate', { targetUserId, candidate: event.candidate });
-    };
-    pc.ontrack = (event) => {
-      document.getElementById('remoteVideo').srcObject = event.streams[0];
-    };
+    pc.onicecandidate = (event) => { if (event.candidate) socket.emit('ice-candidate', { targetUserId, candidate: event.candidate }); };
+    pc.ontrack = (event) => { document.getElementById('remoteVideo').srcObject = event.streams[0]; };
     const stream = await navigator.mediaDevices.getUserMedia({ video: true, audio: true });
     currentCall.localStream = stream;
     document.getElementById('localVideo').srcObject = stream;
@@ -525,9 +523,7 @@
     }
     showModal('callModal');
   }
-  function handleRemoteAnswer(answer) {
-    if (currentCall.peerConnection) currentCall.peerConnection.setRemoteDescription(new RTCSessionDescription(answer));
-  }
+  function handleRemoteAnswer(answer) { if (currentCall.peerConnection) currentCall.peerConnection.setRemoteDescription(new RTCSessionDescription(answer)); }
   function endCall() {
     if (currentCall.peerConnection) currentCall.peerConnection.close();
     if (currentCall.localStream) currentCall.localStream.getTracks().forEach(t => t.stop());
@@ -709,7 +705,7 @@
     }, 300);
   });
 
-  // ========== НОВЫЙ КОД: ПРИНУДИТЕЛЬНОЕ СОЗДАНИЕ ГАМБУРГЕРА И АВТОМОБИЛЬНЫЙ РЕЖИМ ==========
+  // ========== ГАМБУРГЕР И МОБИЛЬНЫЙ РЕЖИМ (ИСПРАВЛЕНО) ==========
   (function() {
     function createHamburger() {
       let hamburger = document.getElementById('menuToggle');
