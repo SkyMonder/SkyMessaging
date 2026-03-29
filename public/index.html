@@ -16,7 +16,7 @@
     }
 
     body {
-      font-family: system-ui, -apple-system, 'Segoe UI', Roboto, 'Helvetica Neue', sans-serif;
+      font-family: system-ui, -apple-system, 'Segoe UI', Roboto, sans-serif;
       background: #0a0a0f;
       color: #eef;
       height: 100vh;
@@ -28,7 +28,7 @@
       height: 100vh;
     }
 
-    /* Базовые стили (десктоп) */
+    /* Sidebar */
     .sidebar {
       width: 280px;
       background: #111114;
@@ -126,6 +126,7 @@
       text-overflow: ellipsis;
     }
 
+    /* Chat area */
     .chat-area {
       flex: 1;
       display: flex;
@@ -158,6 +159,7 @@
       margin-left: 12px;
     }
 
+    /* Members panel */
     .members-panel {
       width: 280px;
       background: #111114;
@@ -193,6 +195,7 @@
       background: #1a1a1f;
     }
 
+    /* Messages */
     .messages-container {
       flex: 1;
       overflow-y: auto;
@@ -243,6 +246,7 @@
       text-align: right;
     }
 
+    /* Input area */
     .input-area {
       padding: 12px;
       background: #111114;
@@ -297,7 +301,7 @@
       z-index: 100;
     }
 
-    /* Модальные окна */
+    /* Modals */
     .modal {
       position: fixed;
       top: 0;
@@ -366,6 +370,7 @@
       margin-top: 4px;
     }
 
+    /* Call modal */
     .call-modal {
       position: fixed;
       top: 0;
@@ -436,37 +441,6 @@
       margin-left: 12px;
     }
 
-    /* Стили для мобильного режима (принудительно через класс) */
-    body.mobile-mode .sidebar {
-      position: fixed;
-      left: -280px;
-      transition: left 0.2s;
-      z-index: 1000;
-      height: 100%;
-    }
-
-    body.mobile-mode .sidebar.show {
-      left: 0;
-    }
-
-    body.mobile-mode .members-panel {
-      position: fixed;
-      right: -280px;
-      transition: right 0.2s;
-      z-index: 1000;
-      height: 100%;
-    }
-
-    body.mobile-mode .members-panel.show {
-      right: 0;
-    }
-
-    body.mobile-mode .chat-header-left .avatar {
-      width: 36px;
-      height: 36px;
-    }
-
-    /* Кнопка гамбургер показывается только в мобильном режиме */
     .menu-toggle {
       display: none;
       background: none;
@@ -477,16 +451,46 @@
       margin-right: 10px;
     }
 
-    body.mobile-mode .menu-toggle {
-      display: block;
-    }
-
     .close-panel-btn {
       background: none;
       border: none;
       color: white;
       font-size: 20px;
       cursor: pointer;
+    }
+
+    /* Мобильный режим (активируется кнопкой) */
+    body.mobile-mode .sidebar {
+      position: fixed;
+      left: -280px;
+      z-index: 1000;
+      height: 100%;
+      transition: left 0.2s;
+    }
+
+    body.mobile-mode .sidebar.show {
+      left: 0;
+    }
+
+    body.mobile-mode .members-panel {
+      position: fixed;
+      right: -280px;
+      z-index: 1000;
+      height: 100%;
+      transition: right 0.2s;
+    }
+
+    body.mobile-mode .members-panel.show {
+      right: 0;
+    }
+
+    body.mobile-mode .menu-toggle {
+      display: inline-block;
+    }
+
+    body.mobile-mode .chat-header-left .avatar {
+      width: 36px;
+      height: 36px;
     }
   </style>
 </head>
@@ -548,7 +552,7 @@
   </div>
 </div>
 
-<!-- Модальные окна (те же, что и раньше) -->
+<!-- Модальные окна -->
 <div id="loginModal" class="modal"><div class="modal-content"><h3>Вход в SkyMessage</h3><input type="text" id="loginLogin" placeholder="Логин"><input type="password" id="loginPassword" placeholder="Пароль"><button id="doLoginBtn">Войти</button><button id="toRegisterBtn">Нет аккаунта? Зарегистрироваться</button></div></div>
 <div id="registerModal" class="modal"><div class="modal-content"><h3>Регистрация</h3><input type="text" id="regLogin" placeholder="Логин"><input type="password" id="regPassword" placeholder="Пароль"><input type="text" id="regDisplayName" placeholder="Имя (необязательно)"><button id="doRegisterBtn">Зарегистрироваться</button><button id="toLoginBtn">Уже есть аккаунт? Войти</button></div></div>
 <div id="profileModal" class="modal"><div class="modal-content"><h3>Мой профиль</h3><img id="modalAvatar" width="80" style="border-radius:50%;"><br><input type="text" id="editDisplayName" placeholder="Имя"><br><input type="text" id="editStatus" placeholder="Статус"><br><input type="file" id="avatarUpload" accept="image/*"><br><button id="saveProfileBtn">Сохранить</button><button id="closeProfileBtn">Закрыть</button></div></div>
@@ -562,7 +566,7 @@
 
 <script src="/socket.io/socket.io.js"></script>
 <script>
-  // ==================== Глобальные переменные ====================
+  // ========== ПОЛНАЯ ЛОГИКА МЕССЕНДЖЕРА ==========
   let currentUser = null;
   let token = localStorage.getItem('token');
   let socket = null;
@@ -574,9 +578,10 @@
   let channelsCache = {};
   let currentMessages = [];
 
-  // ==================== Вспомогательные функции ====================
-  function showModal(modalId) { document.getElementById(modalId).style.display = 'flex'; }
-  function hideModal(modalId) { document.getElementById(modalId).style.display = 'none'; }
+  const emojis = ['😀','😃','😄','😁','😆','😅','😂','🤣','😊','😇','😍','🥰','😘','😗','😙','😚','🙂','🤗','🤩','🤔','🤨','😐','😑','😶','😏','😒','🙄','😬','🤥','😌','😔','😪','🤤','😴','😷','🤒','🤕','🤢','🤮','🤧','🥵','🥶','🥴','😵','🤯','🤠','🥳','😎','🤓','🧐','😕','😟','🙁','☹️','😮','😯','😲','😳','🥺','😦','😧','😨','😰','😥','😢','😭','😱','😖','😣','😞','😓','😩','😫','🥱','😤','😡','😠','🤬','😈','👿','💀','👻','💩','🤡','👹','👺','🤖','🎃','😺','😸','😹','😻','😼','😽','🙀','😿','😾'];
+
+  function showModal(id) { document.getElementById(id).style.display = 'flex'; }
+  function hideModal(id) { document.getElementById(id).style.display = 'none'; }
   function escapeHtml(str) { return String(str).replace(/[&<>]/g, function(m) { if(m==='&') return '&amp;'; if(m==='<') return '&lt;'; if(m==='>') return '&gt;'; return m; }); }
 
   function updateProfileUI() {
@@ -588,7 +593,6 @@
     document.getElementById('editStatus').value = currentUser.status || '';
   }
 
-  // ==================== API вызовы ====================
   async function login(login, password) {
     const res = await fetch('/login', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ login, password }) });
     if (!res.ok) { alert('Неверный логин или пароль'); return false; }
@@ -627,7 +631,6 @@
     }
   }
 
-  // ==================== Socket.io ====================
   function connectSocket() {
     if (socket) socket.disconnect();
     socket = io({ auth: { token } });
@@ -652,7 +655,6 @@
     socket.on('group-updated', (group) => { groupsCache[group.id] = group; if (currentConvId === group.id) refreshMembersPanel(); loadConversations(); });
     socket.on('channel-created', () => loadConversations());
     socket.on('channel-updated', (channel) => { channelsCache[channel.id] = channel; if (currentConvId === channel.id) refreshMembersPanel(); loadConversations(); });
-    // WebRTC
     socket.on('incoming-call', async ({ from, offer }) => {
       if (currentCall.active) { socket.emit('call-end', { targetUserId: from }); return; }
       if (confirm(`Входящий звонок от ${usersCache[from]?.displayName || from}. Принять?`)) {
@@ -708,7 +710,6 @@
 
   async function refreshMembersPanel() {
     if (!currentConvId) return;
-    const panel = document.getElementById('membersPanel');
     if (currentConvType === 'group') {
       const groupRes = await fetch(`/group/${currentConvId}`);
       if (groupRes.ok) {
@@ -732,7 +733,7 @@
         } else {
           settingsDiv.style.display = 'none';
         }
-        panel.classList.add('show');
+        document.getElementById('membersPanel').classList.add('show');
       }
     } else if (currentConvType === 'channel') {
       const channelRes = await fetch(`/channel/${currentConvId}`);
@@ -756,7 +757,7 @@
         } else {
           settingsDiv.style.display = 'none';
         }
-        panel.classList.add('show');
+        document.getElementById('membersPanel').classList.add('show');
       }
     } else {
       document.getElementById('membersPanel').classList.remove('show');
@@ -913,7 +914,6 @@
     }
   }
 
-  // WebRTC
   async function startCall(targetUserId, isAnswer = false, offer = null) {
     if (currentCall.active) return;
     currentCall.active = true;
@@ -962,12 +962,11 @@
     document.getElementById(type === 'audio' ? 'toggleMicBtn' : 'toggleCamBtn').innerText = type === 'audio' ? (enabled ? '🎤 Выкл' : '🎤 Вкл') : (enabled ? '📷 Выкл' : '📷 Вкл');
   }
 
-  // ==================== UI обработчики ====================
+  // UI обработчики
   document.getElementById('sendBtn').onclick = () => sendMessage(document.getElementById('messageInput').value);
   document.getElementById('messageInput').addEventListener('keypress', (e) => { if (e.key === 'Enter') sendMessage(e.target.value); });
   document.getElementById('fileInput').onchange = (e) => { if (e.target.files[0]) sendMessage('', e.target.files[0]); e.target.value = ''; };
   document.getElementById('emojiBtn').onclick = () => { const picker = document.getElementById('emojiPicker'); picker.style.display = picker.style.display === 'grid' ? 'none' : 'grid'; };
-  const emojis = ['😀','😃','😄','😁','😆','😅','😂','🤣','😊','😇','😍','🥰','😘','😗','😙','😚','🙂','🤗','🤩','🤔','🤨','😐','😑','😶','😏','😒','🙄','😬','🤥','😌','😔','😪','🤤','😴','😷','🤒','🤕','🤢','🤮','🤧','🥵','🥶','🥴','😵','🤯','🤠','🥳','😎','🤓','🧐','😕','😟','🙁','☹️','😮','😯','😲','😳','🥺','😦','😧','😨','😰','😥','😢','😭','😱','😖','😣','😞','😓','😩','😫','🥱','😤','😡','😠','🤬','😈','👿','💀','👻','💩','🤡','👹','👺','🤖','🎃','😺','😸','😹','😻','😼','😽','🙀','😿','😾'];
   emojis.forEach(emoji => { const btn = document.createElement('button'); btn.innerText = emoji; btn.style.fontSize = '24px'; btn.onclick = () => { document.getElementById('messageInput').value += emoji; document.getElementById('emojiPicker').style.display = 'none'; }; document.getElementById('emojiPicker').appendChild(btn); });
   document.getElementById('callBtn').onclick = () => { if (currentConvType === 'private') startCall(currentConvId.split('_').find(id => id !== currentUser.id)); else alert('Звонки только в личных чатах'); };
   document.getElementById('hangupBtn').onclick = endCall;
@@ -993,7 +992,7 @@
   document.getElementById('closeUserProfileBtn').onclick = () => hideModal('userProfileModal');
   document.getElementById('membersBtn').onclick = () => document.getElementById('membersPanel').classList.toggle('show');
   document.getElementById('closeMembersPanel').onclick = () => document.getElementById('membersPanel').classList.remove('show');
-  document.getElementById('chatInfoBtn').onclick = () => { if (document.body.classList.contains('mobile-mode')) { document.querySelector('.sidebar').classList.remove('show'); } if (currentConvType === 'group' || currentConvType === 'channel') document.getElementById('membersPanel').classList.toggle('show'); };
+  document.getElementById('chatInfoBtn').onclick = () => { if (document.body.classList.contains('mobile-mode')) document.getElementById('sidebar').classList.remove('show'); if (currentConvType === 'group' || currentConvType === 'channel') document.getElementById('membersPanel').classList.toggle('show'); };
   document.getElementById('settingsBtn').onclick = () => { if (currentConvType === 'group') refreshMembersPanel(); else if (currentConvType === 'channel') refreshMembersPanel(); };
   document.getElementById('newChatBtn').onclick = () => showModal('newChatModal');
   document.getElementById('startChatBtn').onclick = async () => {
@@ -1035,29 +1034,7 @@
   document.getElementById('closeChannelModal').onclick = () => hideModal('channelModal');
   document.getElementById('closeGroupSettingsBtn').onclick = () => hideModal('groupSettingsModal');
   document.getElementById('closeChannelSettingsBtn').onclick = () => hideModal('channelSettingsModal');
-  document.getElementById('menuToggle').addEventListener('click', () => document.querySelector('.sidebar').classList.toggle('show'));
   document.getElementById('messagesContainer').addEventListener('click', (e) => { const fileDiv = e.target.closest('.message-file'); if (fileDiv) { const msgId = fileDiv.dataset.msgid; if (msgId) downloadFile(msgId); } });
-
-  // ===== КНОПКА ПЕРЕКЛЮЧЕНИЯ В МОБИЛЬНЫЙ РЕЖИМ =====
-  const mobileModeBtn = document.getElementById('mobileModeBtn');
-  mobileModeBtn.addEventListener('click', () => {
-    document.body.classList.toggle('mobile-mode');
-    // Сохраняем состояние в localStorage
-    const isMobileMode = document.body.classList.contains('mobile-mode');
-    localStorage.setItem('mobileMode', isMobileMode ? 'true' : 'false');
-    // Принудительно скрываем боковую панель при включении мобильного режима
-    if (isMobileMode) {
-      document.querySelector('.sidebar').classList.remove('show');
-    } else {
-      document.querySelector('.sidebar').style.position = '';
-      document.querySelector('.sidebar').style.left = '';
-    }
-  });
-
-  // Восстанавливаем режим при загрузке
-  if (localStorage.getItem('mobileMode') === 'true') {
-    document.body.classList.add('mobile-mode');
-  }
 
   // Поиск пользователей
   let searchTimeout;
@@ -1149,7 +1126,25 @@
     }, 300);
   });
 
-  // Авторизация
+  // Кнопка переключения мобильного режима
+  document.getElementById('mobileModeBtn').addEventListener('click', () => {
+    document.body.classList.toggle('mobile-mode');
+    if (document.body.classList.contains('mobile-mode')) {
+      // Принудительно закрываем сайдбар
+      document.getElementById('sidebar').classList.remove('show');
+      // Отключаем масштабирование жестами
+      document.querySelector('meta[name="viewport"]').setAttribute('content', 'width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no');
+    } else {
+      document.querySelector('meta[name="viewport"]').setAttribute('content', 'width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=yes');
+    }
+  });
+
+  // Гамбургер для мобильного режима
+  document.getElementById('menuToggle').addEventListener('click', () => {
+    document.getElementById('sidebar').classList.toggle('show');
+  });
+
+  // Auth
   document.getElementById('doLoginBtn').onclick = () => login(document.getElementById('loginLogin').value, document.getElementById('loginPassword').value);
   document.getElementById('toRegisterBtn').onclick = () => { hideModal('loginModal'); showModal('registerModal'); };
   document.getElementById('doRegisterBtn').onclick = () => register(document.getElementById('regLogin').value, document.getElementById('regPassword').value, document.getElementById('regDisplayName').value);
@@ -1171,7 +1166,6 @@
     }
   })();
 
-  // Service Worker с версионированием (опционально)
   if ('serviceWorker' in navigator) {
     navigator.serviceWorker.register('/sw.js?v=' + Date.now())
       .then(reg => console.log('Service Worker registered', reg))
