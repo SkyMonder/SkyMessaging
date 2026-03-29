@@ -12,7 +12,7 @@
   <link rel="manifest" href="/manifest.json">
   <meta name="theme-color" content="#4a76a8">
   <style>
-    /* ========== БАЗОВЫЕ СТИЛИ ========== */
+    /* ========== СТИЛИ (как в предыдущей версии, плюс для полноэкранного звонка) ========== */
     * { box-sizing: border-box; margin: 0; padding: 0; }
     body { font-family: system-ui, -apple-system, 'Segoe UI', Roboto, sans-serif; background: #0a0a0f; color: #eef; height: 100vh; overflow: hidden; }
     #app { display: flex; height: 100vh; }
@@ -38,7 +38,6 @@
     .members-panel.show { display: flex; }
     .members-header { padding: 16px; border-bottom: 1px solid #222; font-weight: bold; display: flex; justify-content: space-between; align-items: center; }
     .member-item { padding: 12px; display: flex; align-items: center; gap: 12px; cursor: pointer; border-bottom: 1px solid #1a1a1e; }
-    .member-item:hover { background: #1a1a1f; }
     .messages-container { flex: 1; overflow-y: auto; padding: 16px; display: flex; flex-direction: column; gap: 8px; }
     .message { max-width: 70%; padding: 8px 12px; border-radius: 18px; background: #1e1e24; align-self: flex-start; }
     .message.own { align-self: flex-end; background: #2c6e9e; }
@@ -55,9 +54,55 @@
     .modal-content { background: #111114; border-radius: 24px; padding: 24px; width: 90%; max-width: 400px; max-height: 80vh; overflow-y: auto; }
     .modal-content input, .modal-content textarea { width: 100%; padding: 10px; margin: 8px 0; border-radius: 12px; border: none; background: #1e1e24; color: white; }
     .modal-content button { margin-top: 12px; padding: 10px 16px; background: #2c6e9e; border: none; border-radius: 40px; color: white; cursor: pointer; }
+    .password-wrapper { position: relative; }
+    .password-wrapper input { padding-right: 40px; }
+    .toggle-password { position: absolute; right: 10px; top: 50%; transform: translateY(-50%); cursor: pointer; color: #aaa; font-size: 18px; }
     .search-results { margin-top: 12px; max-height: 200px; overflow-y: auto; }
     .search-user-item { padding: 8px; background: #1e1e24; margin-bottom: 4px; border-radius: 12px; cursor: pointer; display: flex; align-items: center; gap: 8px; }
     .search-category { padding: 8px; background: #2a2a32; font-weight: bold; margin-top: 4px; }
+    /* Полноэкранное модальное окно звонка */
+    .incoming-call-modal {
+      position: fixed;
+      top: 0;
+      left: 0;
+      width: 100%;
+      height: 100%;
+      background: rgba(0,0,0,0.95);
+      z-index: 2000;
+      display: none;
+      flex-direction: column;
+      justify-content: center;
+      align-items: center;
+      color: white;
+      font-size: 24px;
+    }
+    .incoming-call-modal.show {
+      display: flex;
+    }
+    .incoming-call-modal .caller-name {
+      font-size: 32px;
+      font-weight: bold;
+      margin-bottom: 40px;
+    }
+    .incoming-call-modal .call-buttons {
+      display: flex;
+      gap: 40px;
+    }
+    .incoming-call-modal button {
+      padding: 16px 32px;
+      font-size: 24px;
+      border: none;
+      border-radius: 60px;
+      cursor: pointer;
+    }
+    .incoming-call-modal .accept {
+      background: #2c6e9e;
+      color: white;
+    }
+    .incoming-call-modal .reject {
+      background: #c42e2e;
+      color: white;
+    }
     .call-modal { position: fixed; top: 0; left: 0; width: 100%; height: 100%; background: rgba(0,0,0,0.9); display: none; justify-content: center; align-items: center; z-index: 1000; }
     .call-container { background: #111114; border-radius: 24px; padding: 20px; width: 90%; max-width: 700px; text-align: center; }
     .video-container { display: flex; gap: 16px; justify-content: center; margin: 16px 0; flex-wrap: wrap; }
@@ -69,23 +114,9 @@
     .logout-btn { background: none; border: none; color: #ff6b6b; cursor: pointer; font-size: 14px; margin-left: 12px; }
     .menu-toggle { display: none; background: none; border: none; color: white; font-size: 24px; cursor: pointer; margin-right: 10px; }
     .close-panel-btn { background: none; border: none; color: white; font-size: 20px; cursor: pointer; }
-
-    /* Мобильный режим */
-    body.mobile-mode .sidebar {
-      position: fixed;
-      left: -280px;
-      z-index: 1000;
-      height: 100%;
-      transition: left 0.2s;
-    }
+    body.mobile-mode .sidebar { position: fixed; left: -280px; z-index: 1000; height: 100%; transition: left 0.2s; }
     body.mobile-mode .sidebar.show { left: 0; }
-    body.mobile-mode .members-panel {
-      position: fixed;
-      right: -280px;
-      z-index: 1000;
-      height: 100%;
-      transition: right 0.2s;
-    }
+    body.mobile-mode .members-panel { position: fixed; right: -280px; z-index: 1000; height: 100%; transition: right 0.2s; }
     body.mobile-mode .members-panel.show { right: 0; }
     body.mobile-mode .menu-toggle { display: inline-block; }
     body.mobile-mode .chat-header-left .avatar { width: 36px; height: 36px; }
@@ -93,6 +124,7 @@
 </head>
 <body>
 <div id="app">
+  <!-- sidebar, chat-area, members-panel (как в предыдущей версии) -->
   <div class="sidebar" id="sidebar">
     <div class="sidebar-header" id="sidebarHeader">
       <div class="user-info" id="profileBtn">
@@ -148,9 +180,46 @@
   </div>
 </div>
 
-<!-- Модальные окна (сокращены для экономии места, но они все есть) -->
-<div id="loginModal" class="modal"><div class="modal-content"><h3>Вход в SkyMessage</h3><input type="text" id="loginLogin" placeholder="Логин"><input type="password" id="loginPassword" placeholder="Пароль"><button id="doLoginBtn">Войти</button><button id="toRegisterBtn">Нет аккаунта? Зарегистрироваться</button></div></div>
-<div id="registerModal" class="modal"><div class="modal-content"><h3>Регистрация</h3><input type="text" id="regLogin" placeholder="Логин"><input type="password" id="regPassword" placeholder="Пароль"><input type="text" id="regDisplayName" placeholder="Имя (необязательно)"><button id="doRegisterBtn">Зарегистрироваться</button><button id="toLoginBtn">Уже есть аккаунт? Войти</button></div></div>
+<!-- Полноэкранное окно входящего звонка -->
+<div id="incomingCallModal" class="incoming-call-modal">
+  <div class="caller-name" id="callerName">Звонок...</div>
+  <div class="call-buttons">
+    <button class="accept" id="acceptCallBtn">Принять</button>
+    <button class="reject" id="rejectCallBtn">Отклонить</button>
+  </div>
+</div>
+
+<!-- Модальные окна входа/регистрации (с глазиками) -->
+<div id="loginModal" class="modal">
+  <div class="modal-content">
+    <h3>Вход в SkyMessage</h3>
+    <div class="password-wrapper">
+      <input type="text" id="loginLogin" placeholder="Логин">
+    </div>
+    <div class="password-wrapper">
+      <input type="password" id="loginPassword" placeholder="Пароль">
+      <span class="toggle-password" data-target="loginPassword">👁️</span>
+    </div>
+    <button id="doLoginBtn">Войти</button>
+    <button id="toRegisterBtn">Нет аккаунта? Зарегистрироваться</button>
+  </div>
+</div>
+
+<div id="registerModal" class="modal">
+  <div class="modal-content">
+    <h3>Регистрация</h3>
+    <input type="text" id="regLogin" placeholder="Логин">
+    <div class="password-wrapper">
+      <input type="password" id="regPassword" placeholder="Пароль">
+      <span class="toggle-password" data-target="regPassword">👁️</span>
+    </div>
+    <input type="text" id="regDisplayName" placeholder="Имя (необязательно)">
+    <button id="doRegisterBtn">Зарегистрироваться</button>
+    <button id="toLoginBtn">Уже есть аккаунт? Войти</button>
+  </div>
+</div>
+
+<!-- Остальные модальные окна (профиль, настройки групп, каналов, звонков) – аналогично предыдущей версии, но для краткости оставлю заглушки -->
 <div id="profileModal" class="modal"><div class="modal-content"><h3>Мой профиль</h3><img id="modalAvatar" width="80" style="border-radius:50%;"><br><input type="text" id="editDisplayName" placeholder="Имя"><br><input type="text" id="editStatus" placeholder="Статус"><br><input type="file" id="avatarUpload" accept="image/*"><br><button id="saveProfileBtn">Сохранить</button><button id="closeProfileBtn">Закрыть</button></div></div>
 <div id="userProfileModal" class="modal"><div class="modal-content"><h3>Профиль пользователя</h3><img id="userProfileAvatar" width="80"><div><strong>Имя:</strong> <span id="userProfileName"></span></div><div><strong>Логин:</strong> <span id="userProfileLogin"></span></div><div><strong>Статус:</strong> <span id="userProfileStatus"></span></div><div><strong>Зарегистрирован:</strong> <span id="userProfileCreated"></span></div><button id="closeUserProfileBtn">Закрыть</button></div></div>
 <div id="groupSettingsModal" class="modal"><div class="modal-content"><h3>Настройки группы</h3><input type="text" id="groupNameEdit" placeholder="Название группы"><input type="file" id="groupAvatarUpload" accept="image/*"><button id="saveGroupSettingsBtn">Сохранить</button><h4>Участники</h4><div id="groupMembersList"></div><div><input type="text" id="addMemberLogin" placeholder="Логин для добавления"><button id="addMemberBtn">Добавить</button></div><button id="closeGroupSettingsBtn">Закрыть</button></div></div>
@@ -162,13 +231,14 @@
 
 <script src="/socket.io/socket.io.js"></script>
 <script>
-  // ========== ВСЯ ЛОГИКА МЕССЕНДЖЕРА (сокращена для ясности, но полная) ==========
+  // ========== ПОЛНАЯ ЛОГИКА МЕССЕНДЖЕРА (с предыдущей версии) ==========
   let currentUser = null;
   let token = localStorage.getItem('token');
   let socket = null;
   let currentConvId = null;
   let currentConvType = null;
   let currentCall = { active: false, peerConnection: null, targetUserId: null, localStream: null };
+  let pendingCall = null; // { from, offer }
   let usersCache = {};
   let groupsCache = {};
   let channelsCache = {};
@@ -180,6 +250,40 @@
   function hideModal(id) { document.getElementById(id).style.display = 'none'; }
   function escapeHtml(str) { return String(str).replace(/[&<>]/g, function(m) { if(m==='&') return '&amp;'; if(m==='<') return '&lt;'; if(m==='>') return '&gt;'; return m; }); }
 
+  // Уведомления
+  function showNotification(title, body) {
+    if (!("Notification" in window)) return;
+    if (Notification.permission === "granted") {
+      new Notification(title, { body, icon: '/icon-192.png' });
+    } else if (Notification.permission !== "denied") {
+      Notification.requestPermission();
+    }
+  }
+
+  // Полноэкранное окно входящего звонка
+  function showIncomingCallModal(callerName, onAccept, onReject) {
+    const modal = document.getElementById('incomingCallModal');
+    document.getElementById('callerName').innerText = callerName;
+    modal.classList.add('show');
+    const acceptBtn = document.getElementById('acceptCallBtn');
+    const rejectBtn = document.getElementById('rejectCallBtn');
+    const acceptHandler = () => {
+      modal.classList.remove('show');
+      acceptBtn.removeEventListener('click', acceptHandler);
+      rejectBtn.removeEventListener('click', rejectHandler);
+      onAccept();
+    };
+    const rejectHandler = () => {
+      modal.classList.remove('show');
+      acceptBtn.removeEventListener('click', acceptHandler);
+      rejectBtn.removeEventListener('click', rejectHandler);
+      onReject();
+    };
+    acceptBtn.addEventListener('click', acceptHandler);
+    rejectBtn.addEventListener('click', rejectHandler);
+  }
+
+  // Обновление профиля
   function updateProfileUI() {
     if (!currentUser) return;
     document.getElementById('currentDisplayName').innerText = currentUser.displayName;
@@ -237,6 +341,10 @@
         currentMessages.push(message);
         appendMessage(message, message.senderId === currentUser.id);
       }
+      if (currentConvId !== convId && message.senderId !== currentUser.id) {
+        const sender = usersCache[message.senderId] || { displayName: 'Кто-то' };
+        showNotification(`Новое сообщение от ${sender.displayName}`, message.type === 'text' ? message.content : '📎 Файл');
+      }
       loadConversations();
     });
     socket.on('profile-updated', (data) => {
@@ -253,18 +361,35 @@
     socket.on('channel-updated', (channel) => { channelsCache[channel.id] = channel; if (currentConvId === channel.id) refreshMembersPanel(); loadConversations(); });
     socket.on('incoming-call', async ({ from, offer }) => {
       if (currentCall.active) { socket.emit('call-end', { targetUserId: from }); return; }
-      if (confirm(`Входящий звонок от ${usersCache[from]?.displayName || from}. Принять?`)) {
-        startCall(from, true, offer);
+      let callerName = from;
+      if (!usersCache[from]) {
+        const res = await fetch(`/user/${from}`);
+        if (res.ok) {
+          const user = await res.json();
+          usersCache[from] = user;
+          callerName = user.displayName;
+        }
       } else {
-        socket.emit('call-end', { targetUserId: from });
+        callerName = usersCache[from].displayName;
       }
+      // Показываем полноэкранное модальное окно вместо confirm
+      showIncomingCallModal(callerName, () => {
+        // Принять
+        startCall(from, true, offer);
+      }, () => {
+        // Отклонить
+        socket.emit('call-end', { targetUserId: from });
+      });
     });
     socket.on('call-answered', ({ from, answer }) => handleRemoteAnswer(answer));
     socket.on('ice-candidate', ({ from, candidate }) => { if (currentCall.peerConnection) currentCall.peerConnection.addIceCandidate(new RTCIceCandidate(candidate)); });
     socket.on('call-ended', () => endCall());
   }
 
-  async function loadConversations() { if (!socket) return; socket.emit('get-conversations'); }
+  async function loadConversations() {
+    if (!socket) return;
+    socket.emit('get-conversations');
+  }
 
   function renderConversations(convs) {
     const container = document.getElementById('conversationsList');
@@ -323,7 +448,9 @@
           settingsDiv.style.display = 'block';
           settingsDiv.innerHTML = `<button id="groupSettingsBtn">Настройки группы</button>`;
           document.getElementById('groupSettingsBtn').onclick = () => showGroupSettings(group);
-        } else { settingsDiv.style.display = 'none'; }
+        } else {
+          settingsDiv.style.display = 'none';
+        }
         document.getElementById('membersPanel').classList.add('show');
       }
     } else if (currentConvType === 'channel') {
@@ -345,10 +472,14 @@
           settingsDiv.style.display = 'block';
           settingsDiv.innerHTML = `<button id="channelSettingsBtn">Настройки канала</button>`;
           document.getElementById('channelSettingsBtn').onclick = () => showChannelSettings(channel);
-        } else { settingsDiv.style.display = 'none'; }
+        } else {
+          settingsDiv.style.display = 'none';
+        }
         document.getElementById('membersPanel').classList.add('show');
       }
-    } else { document.getElementById('membersPanel').classList.remove('show'); }
+    } else {
+      document.getElementById('membersPanel').classList.remove('show');
+    }
   }
 
   function showGroupSettings(group) {
@@ -481,7 +612,9 @@
       document.body.appendChild(link);
       link.click();
       document.body.removeChild(link);
-    } else { alert('Файл не найден'); }
+    } else {
+      alert('Файл не найден');
+    }
   }
 
   async function sendMessage(text, file = null) {
@@ -505,8 +638,12 @@
     currentCall.targetUserId = targetUserId;
     const pc = new RTCPeerConnection({ iceServers: [{ urls: 'stun:stun.l.google.com:19302' }] });
     currentCall.peerConnection = pc;
-    pc.onicecandidate = (event) => { if (event.candidate) socket.emit('ice-candidate', { targetUserId, candidate: event.candidate }); };
-    pc.ontrack = (event) => { document.getElementById('remoteVideo').srcObject = event.streams[0]; };
+    pc.onicecandidate = (event) => {
+      if (event.candidate) socket.emit('ice-candidate', { targetUserId, candidate: event.candidate });
+    };
+    pc.ontrack = (event) => {
+      document.getElementById('remoteVideo').srcObject = event.streams[0];
+    };
     const stream = await navigator.mediaDevices.getUserMedia({ video: true, audio: true });
     currentCall.localStream = stream;
     document.getElementById('localVideo').srcObject = stream;
@@ -523,7 +660,9 @@
     }
     showModal('callModal');
   }
-  function handleRemoteAnswer(answer) { if (currentCall.peerConnection) currentCall.peerConnection.setRemoteDescription(new RTCSessionDescription(answer)); }
+  function handleRemoteAnswer(answer) {
+    if (currentCall.peerConnection) currentCall.peerConnection.setRemoteDescription(new RTCSessionDescription(answer));
+  }
   function endCall() {
     if (currentCall.peerConnection) currentCall.peerConnection.close();
     if (currentCall.localStream) currentCall.localStream.getTracks().forEach(t => t.stop());
@@ -541,7 +680,7 @@
     document.getElementById(type === 'audio' ? 'toggleMicBtn' : 'toggleCamBtn').innerText = type === 'audio' ? (enabled ? '🎤 Выкл' : '🎤 Вкл') : (enabled ? '📷 Выкл' : '📷 Вкл');
   }
 
-  // UI обработчики
+  // UI обработчики (кнопки, поиск, мобильный режим и т.д.) – такие же, как в предыдущей версии
   document.getElementById('sendBtn').onclick = () => sendMessage(document.getElementById('messageInput').value);
   document.getElementById('messageInput').addEventListener('keypress', (e) => { if (e.key === 'Enter') sendMessage(e.target.value); });
   document.getElementById('fileInput').onchange = (e) => { if (e.target.files[0]) sendMessage('', e.target.files[0]); e.target.value = ''; };
@@ -705,66 +844,58 @@
     }, 300);
   });
 
-  // ========== ГАМБУРГЕР И МОБИЛЬНЫЙ РЕЖИМ (ИСПРАВЛЕНО) ==========
-  (function() {
-    function createHamburger() {
-      let hamburger = document.getElementById('menuToggle');
-      if (!hamburger) {
-        hamburger = document.createElement('button');
-        hamburger.id = 'menuToggle';
-        hamburger.className = 'menu-toggle';
-        hamburger.innerText = '☰';
-        hamburger.style.cssText = 'background:none; border:none; color:white; font-size:28px; cursor:pointer; margin-right:10px;';
-        const header = document.querySelector('.sidebar-header');
-        if (header) header.insertBefore(hamburger, header.firstChild);
-        hamburger.onclick = () => document.getElementById('sidebar').classList.toggle('show');
+  // Мобильный режим (автоматически по ширине)
+  function setMobileByWidth() {
+    if (window.innerWidth <= 768) {
+      if (!document.body.classList.contains('mobile-mode')) {
+        document.body.classList.add('mobile-mode');
+        document.querySelector('meta[name="viewport"]').setAttribute('content', 'width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no');
       }
+    } else {
       if (document.body.classList.contains('mobile-mode')) {
-        hamburger.style.display = 'inline-block';
-      } else {
-        hamburger.style.display = 'none';
+        document.body.classList.remove('mobile-mode');
+        document.querySelector('meta[name="viewport"]').setAttribute('content', 'width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=yes');
       }
     }
+    // Гамбургер создаём принудительно
+    let hamburger = document.getElementById('menuToggle');
+    if (!hamburger) {
+      hamburger = document.createElement('button');
+      hamburger.id = 'menuToggle';
+      hamburger.className = 'menu-toggle';
+      hamburger.innerText = '☰';
+      hamburger.style.cssText = 'background:none; border:none; color:white; font-size:28px; cursor:pointer; margin-right:10px;';
+      const header = document.querySelector('.sidebar-header');
+      if (header) header.insertBefore(hamburger, header.firstChild);
+      hamburger.onclick = () => document.getElementById('sidebar').classList.toggle('show');
+    }
+    if (document.body.classList.contains('mobile-mode')) {
+      hamburger.style.display = 'inline-block';
+    } else {
+      hamburger.style.display = 'none';
+    }
+  }
+  window.addEventListener('load', setMobileByWidth);
+  window.addEventListener('resize', setMobileByWidth);
+  document.getElementById('mobileModeBtn').addEventListener('click', () => {
+    document.body.classList.toggle('mobile-mode');
+    setMobileByWidth();
+  });
 
-    // Автоматически включаем мобильный режим при ширине <= 768px
-    function setMobileByWidth() {
-      if (window.innerWidth <= 768) {
-        if (!document.body.classList.contains('mobile-mode')) {
-          document.body.classList.add('mobile-mode');
-          document.querySelector('meta[name="viewport"]').setAttribute('content', 'width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no');
-        }
+  // Обработчики для показа/скрытия пароля
+  document.querySelectorAll('.toggle-password').forEach(btn => {
+    btn.addEventListener('click', () => {
+      const targetId = btn.dataset.target;
+      const input = document.getElementById(targetId);
+      if (input.type === 'password') {
+        input.type = 'text';
+        btn.innerText = '🙈';
       } else {
-        if (document.body.classList.contains('mobile-mode')) {
-          document.body.classList.remove('mobile-mode');
-          document.querySelector('meta[name="viewport"]').setAttribute('content', 'width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=yes');
-        }
+        input.type = 'password';
+        btn.innerText = '👁️';
       }
-      createHamburger();
-    }
-
-    // Кнопка ручного переключения
-    const mobileBtn = document.getElementById('mobileModeBtn');
-    if (mobileBtn) {
-      mobileBtn.onclick = () => {
-        document.body.classList.toggle('mobile-mode');
-        if (document.body.classList.contains('mobile-mode')) {
-          document.querySelector('meta[name="viewport"]').setAttribute('content', 'width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no');
-        } else {
-          document.querySelector('meta[name="viewport"]').setAttribute('content', 'width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=yes');
-        }
-        createHamburger();
-      };
-    }
-
-    // Следим за изменениями класса mobile-mode
-    const observer = new MutationObserver(() => createHamburger());
-    observer.observe(document.body, { attributes: true, attributeFilter: ['class'] });
-
-    // Запуск при загрузке и изменении размера окна
-    window.addEventListener('load', setMobileByWidth);
-    window.addEventListener('resize', setMobileByWidth);
-    createHamburger();
-  })();
+    });
+  });
 
   // Auth
   document.getElementById('doLoginBtn').onclick = () => login(document.getElementById('loginLogin').value, document.getElementById('loginPassword').value);
