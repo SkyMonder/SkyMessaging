@@ -2,7 +2,7 @@
 <html lang="ru">
 <head>
   <meta charset="UTF-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no, viewport-fit=cover">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=yes, viewport-fit=cover">
   <meta name="mobile-web-app-capable" content="yes">
   <meta name="apple-mobile-web-app-capable" content="yes">
   <title>SkyMessage</title>
@@ -28,7 +28,7 @@
       height: 100vh;
     }
 
-    /* Sidebar */
+    /* Базовые стили (десктоп) */
     .sidebar {
       width: 280px;
       background: #111114;
@@ -44,6 +44,8 @@
       display: flex;
       justify-content: space-between;
       align-items: center;
+      flex-wrap: wrap;
+      gap: 8px;
     }
 
     .user-info {
@@ -61,27 +63,13 @@
       background: #2a2a2e;
     }
 
-    .sidebar-search {
-      padding: 12px;
-      border-bottom: 1px solid #222;
-    }
-
-    .sidebar-search input {
-      width: 100%;
-      padding: 8px 12px;
-      border-radius: 24px;
-      border: none;
-      background: #1e1e24;
-      color: white;
-      outline: none;
-      font-size: 14px;
-    }
-
+    .sidebar-search,
     .sidebar-search-group {
       padding: 12px;
       border-bottom: 1px solid #222;
     }
 
+    .sidebar-search input,
     .sidebar-search-group input {
       width: 100%;
       padding: 8px 12px;
@@ -90,7 +78,6 @@
       background: #1e1e24;
       color: white;
       outline: none;
-      font-size: 14px;
     }
 
     .conversations-list {
@@ -104,7 +91,6 @@
       align-items: center;
       gap: 12px;
       cursor: pointer;
-      transition: background 0.1s;
       border-bottom: 1px solid #1a1a1e;
     }
 
@@ -140,7 +126,6 @@
       text-overflow: ellipsis;
     }
 
-    /* Chat area */
     .chat-area {
       flex: 1;
       display: flex;
@@ -173,7 +158,6 @@
       margin-left: 12px;
     }
 
-    /* Members panel */
     .members-panel {
       width: 280px;
       background: #111114;
@@ -209,7 +193,6 @@
       background: #1a1a1f;
     }
 
-    /* Messages */
     .messages-container {
       flex: 1;
       overflow-y: auto;
@@ -260,7 +243,6 @@
       text-align: right;
     }
 
-    /* Input area */
     .input-area {
       padding: 12px;
       background: #111114;
@@ -315,7 +297,7 @@
       z-index: 100;
     }
 
-    /* Modals */
+    /* Модальные окна */
     .modal {
       position: fixed;
       top: 0;
@@ -384,7 +366,6 @@
       margin-top: 4px;
     }
 
-    /* Call modal */
     .call-modal {
       position: fixed;
       top: 0;
@@ -455,6 +436,37 @@
       margin-left: 12px;
     }
 
+    /* Стили для мобильного режима (принудительно через класс) */
+    body.mobile-mode .sidebar {
+      position: fixed;
+      left: -280px;
+      transition: left 0.2s;
+      z-index: 1000;
+      height: 100%;
+    }
+
+    body.mobile-mode .sidebar.show {
+      left: 0;
+    }
+
+    body.mobile-mode .members-panel {
+      position: fixed;
+      right: -280px;
+      transition: right 0.2s;
+      z-index: 1000;
+      height: 100%;
+    }
+
+    body.mobile-mode .members-panel.show {
+      right: 0;
+    }
+
+    body.mobile-mode .chat-header-left .avatar {
+      width: 36px;
+      height: 36px;
+    }
+
+    /* Кнопка гамбургер показывается только в мобильном режиме */
     .menu-toggle {
       display: none;
       background: none;
@@ -465,42 +477,16 @@
       margin-right: 10px;
     }
 
+    body.mobile-mode .menu-toggle {
+      display: block;
+    }
+
     .close-panel-btn {
       background: none;
       border: none;
       color: white;
       font-size: 20px;
       cursor: pointer;
-    }
-
-    @media (max-width: 768px) {
-      .sidebar {
-        position: fixed;
-        left: -280px;
-        transition: left 0.2s;
-        z-index: 1000;
-        height: 100%;
-      }
-      .sidebar.show {
-        left: 0;
-      }
-      .members-panel {
-        position: fixed;
-        right: -280px;
-        transition: right 0.2s;
-        z-index: 1000;
-        height: 100%;
-      }
-      .members-panel.show {
-        right: 0;
-      }
-      .menu-toggle {
-        display: block;
-      }
-      .chat-header-left .avatar {
-        width: 36px;
-        height: 36px;
-      }
     }
   </style>
 </head>
@@ -537,6 +523,7 @@
         <span id="chatName"></span>
       </div>
       <div class="chat-actions">
+        <button id="mobileModeBtn" title="Режим телефона">📱</button>
         <button id="membersBtn">👥</button>
         <button id="callBtn">📞</button>
         <button id="settingsBtn" style="display: none;">⚙️</button>
@@ -561,7 +548,7 @@
   </div>
 </div>
 
-<!-- Модальные окна -->
+<!-- Модальные окна (те же, что и раньше) -->
 <div id="loginModal" class="modal"><div class="modal-content"><h3>Вход в SkyMessage</h3><input type="text" id="loginLogin" placeholder="Логин"><input type="password" id="loginPassword" placeholder="Пароль"><button id="doLoginBtn">Войти</button><button id="toRegisterBtn">Нет аккаунта? Зарегистрироваться</button></div></div>
 <div id="registerModal" class="modal"><div class="modal-content"><h3>Регистрация</h3><input type="text" id="regLogin" placeholder="Логин"><input type="password" id="regPassword" placeholder="Пароль"><input type="text" id="regDisplayName" placeholder="Имя (необязательно)"><button id="doRegisterBtn">Зарегистрироваться</button><button id="toLoginBtn">Уже есть аккаунт? Войти</button></div></div>
 <div id="profileModal" class="modal"><div class="modal-content"><h3>Мой профиль</h3><img id="modalAvatar" width="80" style="border-radius:50%;"><br><input type="text" id="editDisplayName" placeholder="Имя"><br><input type="text" id="editStatus" placeholder="Статус"><br><input type="file" id="avatarUpload" accept="image/*"><br><button id="saveProfileBtn">Сохранить</button><button id="closeProfileBtn">Закрыть</button></div></div>
@@ -587,8 +574,9 @@
   let channelsCache = {};
   let currentMessages = [];
 
-  function showModal(id) { document.getElementById(id).style.display = 'flex'; }
-  function hideModal(id) { document.getElementById(id).style.display = 'none'; }
+  // ==================== Вспомогательные функции ====================
+  function showModal(modalId) { document.getElementById(modalId).style.display = 'flex'; }
+  function hideModal(modalId) { document.getElementById(modalId).style.display = 'none'; }
   function escapeHtml(str) { return String(str).replace(/[&<>]/g, function(m) { if(m==='&') return '&amp;'; if(m==='<') return '&lt;'; if(m==='>') return '&gt;'; return m; }); }
 
   function updateProfileUI() {
@@ -600,6 +588,7 @@
     document.getElementById('editStatus').value = currentUser.status || '';
   }
 
+  // ==================== API вызовы ====================
   async function login(login, password) {
     const res = await fetch('/login', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ login, password }) });
     if (!res.ok) { alert('Неверный логин или пароль'); return false; }
@@ -638,6 +627,7 @@
     }
   }
 
+  // ==================== Socket.io ====================
   function connectSocket() {
     if (socket) socket.disconnect();
     socket = io({ auth: { token } });
@@ -923,6 +913,7 @@
     }
   }
 
+  // WebRTC
   async function startCall(targetUserId, isAnswer = false, offer = null) {
     if (currentCall.active) return;
     currentCall.active = true;
@@ -971,7 +962,7 @@
     document.getElementById(type === 'audio' ? 'toggleMicBtn' : 'toggleCamBtn').innerText = type === 'audio' ? (enabled ? '🎤 Выкл' : '🎤 Вкл') : (enabled ? '📷 Выкл' : '📷 Вкл');
   }
 
-  // UI обработчики
+  // ==================== UI обработчики ====================
   document.getElementById('sendBtn').onclick = () => sendMessage(document.getElementById('messageInput').value);
   document.getElementById('messageInput').addEventListener('keypress', (e) => { if (e.key === 'Enter') sendMessage(e.target.value); });
   document.getElementById('fileInput').onchange = (e) => { if (e.target.files[0]) sendMessage('', e.target.files[0]); e.target.value = ''; };
@@ -1002,7 +993,7 @@
   document.getElementById('closeUserProfileBtn').onclick = () => hideModal('userProfileModal');
   document.getElementById('membersBtn').onclick = () => document.getElementById('membersPanel').classList.toggle('show');
   document.getElementById('closeMembersPanel').onclick = () => document.getElementById('membersPanel').classList.remove('show');
-  document.getElementById('chatInfoBtn').onclick = () => { if (window.innerWidth <= 768) document.querySelector('.sidebar').classList.remove('show'); if (currentConvType === 'group' || currentConvType === 'channel') document.getElementById('membersPanel').classList.toggle('show'); };
+  document.getElementById('chatInfoBtn').onclick = () => { if (document.body.classList.contains('mobile-mode')) { document.querySelector('.sidebar').classList.remove('show'); } if (currentConvType === 'group' || currentConvType === 'channel') document.getElementById('membersPanel').classList.toggle('show'); };
   document.getElementById('settingsBtn').onclick = () => { if (currentConvType === 'group') refreshMembersPanel(); else if (currentConvType === 'channel') refreshMembersPanel(); };
   document.getElementById('newChatBtn').onclick = () => showModal('newChatModal');
   document.getElementById('startChatBtn').onclick = async () => {
@@ -1046,6 +1037,27 @@
   document.getElementById('closeChannelSettingsBtn').onclick = () => hideModal('channelSettingsModal');
   document.getElementById('menuToggle').addEventListener('click', () => document.querySelector('.sidebar').classList.toggle('show'));
   document.getElementById('messagesContainer').addEventListener('click', (e) => { const fileDiv = e.target.closest('.message-file'); if (fileDiv) { const msgId = fileDiv.dataset.msgid; if (msgId) downloadFile(msgId); } });
+
+  // ===== КНОПКА ПЕРЕКЛЮЧЕНИЯ В МОБИЛЬНЫЙ РЕЖИМ =====
+  const mobileModeBtn = document.getElementById('mobileModeBtn');
+  mobileModeBtn.addEventListener('click', () => {
+    document.body.classList.toggle('mobile-mode');
+    // Сохраняем состояние в localStorage
+    const isMobileMode = document.body.classList.contains('mobile-mode');
+    localStorage.setItem('mobileMode', isMobileMode ? 'true' : 'false');
+    // Принудительно скрываем боковую панель при включении мобильного режима
+    if (isMobileMode) {
+      document.querySelector('.sidebar').classList.remove('show');
+    } else {
+      document.querySelector('.sidebar').style.position = '';
+      document.querySelector('.sidebar').style.left = '';
+    }
+  });
+
+  // Восстанавливаем режим при загрузке
+  if (localStorage.getItem('mobileMode') === 'true') {
+    document.body.classList.add('mobile-mode');
+  }
 
   // Поиск пользователей
   let searchTimeout;
@@ -1159,7 +1171,7 @@
     }
   })();
 
-  // Service Worker с версионированием
+  // Service Worker с версионированием (опционально)
   if ('serviceWorker' in navigator) {
     navigator.serviceWorker.register('/sw.js?v=' + Date.now())
       .then(reg => console.log('Service Worker registered', reg))
