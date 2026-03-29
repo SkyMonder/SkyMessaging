@@ -16,10 +16,8 @@ app.use(express.json({ limit: '50mb' }));
 app.use(express.urlencoded({ extended: true, limit: '50mb' }));
 app.use(express.static(path.join(__dirname, 'public')));
 
-// ========== НАСТРОЙКИ ПОДКЛЮЧЕНИЯ К ВНЕШНЕМУ ХРАНИЛИЩУ ==========
 const STORAGE_URL = 'https://skymessagedb.onrender.com'; // ЗАМЕНИТЕ НА ВАШ URL
 
-// Вспомогательная функция для запросов к storage
 async function storageRequest(endpoint, method = 'GET', body = null) {
   const url = `${STORAGE_URL}${endpoint}`;
   const options = {
@@ -32,7 +30,6 @@ async function storageRequest(endpoint, method = 'GET', body = null) {
   return res.json();
 }
 
-// ========== ВСПОМОГАТЕЛЬНЫЕ ФУНКЦИИ ==========
 function generateId() {
   return crypto.randomBytes(16).toString('hex');
 }
@@ -41,14 +38,10 @@ function getPrivateConversationId(user1, user2) {
   return [user1, user2].sort().join('_');
 }
 
-// ========== API МЕССЕНДЖЕРА (все данные идут в STORAGE) ==========
-
-// Регистрация
 app.post('/register', async (req, res) => {
   const { login, password, displayName } = req.body;
   if (!login || !password) return res.status(400).json({ error: 'Login and password required' });
   try {
-    // Проверяем, существует ли пользователь через storage
     const users = await storageRequest('/api/users');
     const existing = Object.values(users).find(u => u.login === login);
     if (existing) return res.status(400).json({ error: 'User already exists' });
@@ -64,7 +57,6 @@ app.post('/register', async (req, res) => {
   }
 });
 
-// Логин
 app.post('/login', async (req, res) => {
   const { login, password } = req.body;
   try {
@@ -80,7 +72,6 @@ app.post('/login', async (req, res) => {
   }
 });
 
-// Получение текущего пользователя по токену
 app.get('/me', async (req, res) => {
   const token = req.headers.authorization?.split(' ')[1];
   if (!token) return res.status(401).json({ error: 'No token' });
@@ -98,7 +89,6 @@ app.get('/me', async (req, res) => {
   }
 });
 
-// Поиск пользователей
 app.get('/search-users', async (req, res) => {
   const { q } = req.query;
   if (!q) return res.json([]);
@@ -114,7 +104,6 @@ app.get('/search-users', async (req, res) => {
   }
 });
 
-// Обновление профиля
 app.post('/update-profile', async (req, res) => {
   const { token, displayName, avatar, status } = req.body;
   try {
@@ -129,7 +118,6 @@ app.post('/update-profile', async (req, res) => {
     if (avatar !== undefined) user.avatar = avatar;
     if (status) user.status = status;
     await storageRequest('/api/users/' + userId, 'PUT', user);
-    // Уведомление через сокеты
     const sockets = [...io.sockets.sockets.values()].filter(s => s.userId === userId);
     sockets.forEach(s => s.emit('profile-updated', { userId, displayName: user.displayName, avatar: user.avatar, status: user.status }));
     res.json({ success: true, user: { id: user.id, login: user.login, displayName: user.displayName, avatar: user.avatar, status: user.status } });
@@ -139,7 +127,6 @@ app.post('/update-profile', async (req, res) => {
   }
 });
 
-// Получение профиля другого пользователя
 app.get('/user/:id', async (req, res) => {
   try {
     const users = await storageRequest('/api/users');
@@ -152,7 +139,6 @@ app.get('/user/:id', async (req, res) => {
   }
 });
 
-// Создание группы
 app.post('/create-group', async (req, res) => {
   const { token, name, memberIds } = req.body;
   try {
@@ -163,45 +149,36 @@ app.post('/create-group', async (req, res) => {
     const groupId = generateId();
     const group = {
       id: groupId, name: name || 'New Group', avatar: '', ownerId: userId,
-      members: new Set([userId, ...(memberIds || [])]), admins: new Set([userId]), createdAt: new Date().toISOString()
+      members: [userId, ...(memberIds || [])],
+      admins: [userId],
+      createdAt: new Date().toISOString()
     };
-    // Сохраняем группу в storage (преобразуем Set в массивы)
-    const groupForStorage = {
-      ...group,
-      members: Array.from(group.members),
-      admins: Array.from(group.admins)
-    };
-    await storageRequest('/api/groups/' + groupId, 'PUT', groupForStorage);
-    // Уведомление участников через сокеты
+    await storageRequest('/api/groups/' + groupId, 'PUT', group);
     group.members.forEach(mid => {
       const sockets = [...io.sockets.sockets.values()].filter(s => s.userId === mid);
-      sockets.forEach(s => s.emit('group-created', groupForStorage));
+      sockets.forEach(s => s.emit('group-created', group));
     });
-    res.json({ success: true, group: groupForStorage });
+    res.json({ success: true, group });
   } catch (err) {
     console.error(err);
     res.status(500).json({ error: 'Storage error' });
   }
 });
 
-// Получение информации о группе
 app.get('/group/:id', async (req, res) => {
   try {
     const groups = await storageRequest('/api/groups');
     const group = groups[req.params.id];
     if (!group) return res.status(404).json({ error: 'Not found' });
-    // Восстанавливаем Set из массивов
-    const members = group.members.map(id => ({ id, ... })); // нужно подгрузить данные пользователей
     const users = await storageRequest('/api/users');
-    const fullMembers = group.members.map(id => users[id]).filter(u => u);
-    res.json({ ...group, members: fullMembers, admins: group.admins });
+    const members = group.members.map(id => users[id]).filter(u => u);
+    res.json({ ...group, members, admins: group.admins });
   } catch (err) {
     console.error(err);
     res.status(500).json({ error: 'Storage error' });
   }
 });
 
-// Обновление группы
 app.post('/group/update', async (req, res) => {
   const { token, groupId, name, avatar } = req.body;
   try {
@@ -216,7 +193,6 @@ app.post('/group/update', async (req, res) => {
     if (name) group.name = name;
     if (avatar !== undefined) group.avatar = avatar;
     await storageRequest('/api/groups/' + groupId, 'PUT', group);
-    // Уведомление участников
     group.members.forEach(mid => {
       const sockets = [...io.sockets.sockets.values()].filter(s => s.userId === mid);
       sockets.forEach(s => s.emit('group-updated', group));
@@ -228,7 +204,6 @@ app.post('/group/update', async (req, res) => {
   }
 });
 
-// Добавление участника в группу
 app.post('/group/add-member', async (req, res) => {
   const { token, groupId, userIdToAdd } = req.body;
   try {
@@ -254,7 +229,6 @@ app.post('/group/add-member', async (req, res) => {
   }
 });
 
-// Удаление участника из группы
 app.post('/group/remove-member', async (req, res) => {
   const { token, groupId, userIdToRemove } = req.body;
   try {
@@ -285,7 +259,6 @@ app.post('/group/remove-member', async (req, res) => {
   }
 });
 
-// Назначение администратора
 app.post('/group/set-admin', async (req, res) => {
   const { token, groupId, userIdToSet, isAdmin } = req.body;
   try {
@@ -315,7 +288,6 @@ app.post('/group/set-admin', async (req, res) => {
   }
 });
 
-// Вступление в группу
 app.post('/group/join', async (req, res) => {
   const { token, groupId } = req.body;
   try {
@@ -340,7 +312,6 @@ app.post('/group/join', async (req, res) => {
   }
 });
 
-// Создание канала (аналогично группам, но с subscribers)
 app.post('/create-channel', async (req, res) => {
   const { token, name, description } = req.body;
   try {
@@ -363,7 +334,6 @@ app.post('/create-channel', async (req, res) => {
   }
 });
 
-// Получение канала
 app.get('/channel/:id', async (req, res) => {
   try {
     const channels = await storageRequest('/api/channels');
@@ -378,7 +348,6 @@ app.get('/channel/:id', async (req, res) => {
   }
 });
 
-// Подписка на канал
 app.post('/channel/subscribe', async (req, res) => {
   const { token, channelId } = req.body;
   try {
@@ -404,7 +373,6 @@ app.post('/channel/subscribe', async (req, res) => {
   }
 });
 
-// Отписка от канала
 app.post('/channel/unsubscribe', async (req, res) => {
   const { token, channelId } = req.body;
   try {
@@ -428,7 +396,6 @@ app.post('/channel/unsubscribe', async (req, res) => {
   }
 });
 
-// Обновление канала
 app.post('/channel/update', async (req, res) => {
   const { token, channelId, name, description, avatar } = req.body;
   try {
@@ -455,7 +422,6 @@ app.post('/channel/update', async (req, res) => {
   }
 });
 
-// Мои группы
 app.get('/my-groups', async (req, res) => {
   const { token } = req.query;
   try {
@@ -472,7 +438,6 @@ app.get('/my-groups', async (req, res) => {
   }
 });
 
-// Мои каналы
 app.get('/my-channels', async (req, res) => {
   const { token } = req.query;
   try {
@@ -488,10 +453,6 @@ app.get('/my-channels', async (req, res) => {
     res.status(500).json({ error: 'Storage error' });
   }
 });
-
-// ========== СОКЕТЫ (основная логика с отправкой сообщений и WebRTC) ==========
-// Для сокетов также нужно обращаться к storage для сохранения сообщений
-// Поскольку storage предоставляет API, мы будем вызывать его из сокетов.
 
 io.use(async (socket, next) => {
   const token = socket.handshake.auth.token;
@@ -512,7 +473,6 @@ io.on('connection', (socket) => {
   console.log(`User ${userId} connected`);
   socket.join(`user:${userId}`);
 
-  // Отправка списка бесед (аналогично предыдущим версиям, но данные берём из storage)
   socket.on('get-conversations', async () => {
     try {
       const users = await storageRequest('/api/users');
@@ -548,7 +508,6 @@ io.on('connection', (socket) => {
     }
   });
 
-  // Отправка сообщения
   socket.on('send-message', async (data) => {
     const { convId, type, content } = data;
     if (!convId || !content) return;
@@ -556,13 +515,11 @@ io.on('connection', (socket) => {
     const timestamp = Date.now();
     const message = { id: messageId, senderId: userId, type, content, timestamp };
     try {
-      // Получаем текущие сообщения для этого convId
       const allMessages = await storageRequest('/api/messages');
       const convMessages = allMessages[convId] || [];
       convMessages.push(message);
       await storageRequest('/api/messages/' + convId, 'PUT', convMessages);
       
-      // Определяем получателей
       let recipients = new Set();
       if (convId.includes('_')) {
         const [id1, id2] = convId.split('_');
@@ -584,7 +541,6 @@ io.on('connection', (socket) => {
     }
   });
 
-  // Загрузка сообщений
   socket.on('load-messages', async (convId, callback) => {
     try {
       const allMessages = await storageRequest('/api/messages');
@@ -596,7 +552,6 @@ io.on('connection', (socket) => {
     }
   });
 
-  // WebRTC (без изменений)
   socket.on('call-user', ({ targetUserId, offer }) => {
     io.to(`user:${targetUserId}`).emit('incoming-call', { from: userId, offer });
   });
