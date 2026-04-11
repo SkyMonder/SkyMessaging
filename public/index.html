@@ -186,7 +186,8 @@
   async function importPublicKeyFromPem(pem) {
     const pemHeader = "-----BEGIN PUBLIC KEY-----";
     const pemFooter = "-----END PUBLIC KEY-----";
-    const pemContents = pem.substring(pemHeader.length, pem.length - pemFooter.length);
+    let pemContents = pem.substring(pemHeader.length, pem.length - pemFooter.length);
+    pemContents = pemContents.replace(/\s/g, '');
     const binaryDer = Uint8Array.from(atob(pemContents), c => c.charCodeAt(0));
     return await crypto.subtle.importKey("spki", binaryDer, { name: "RSA-OAEP", hash: "SHA-256" }, true, ["encrypt"]);
   }
@@ -199,9 +200,15 @@
 
   async function decryptWithMyKey(ciphertextBase64) {
     if (!rsaKeyPair) throw new Error('No private key');
-    const ciphertext = Uint8Array.from(atob(ciphertextBase64), c => c.charCodeAt(0));
-    const decrypted = await crypto.subtle.decrypt({ name: "RSA-OAEP" }, rsaKeyPair.privateKey, ciphertext);
-    return new TextDecoder().decode(decrypted);
+    try {
+      const binaryString = atob(ciphertextBase64);
+      const ciphertext = Uint8Array.from(binaryString, c => c.charCodeAt(0));
+      const decrypted = await crypto.subtle.decrypt({ name: "RSA-OAEP" }, rsaKeyPair.privateKey, ciphertext);
+      return new TextDecoder().decode(decrypted);
+    } catch (e) {
+      console.error('Decryption error', e);
+      return '🔒 Ошибка расшифровки (неверный формат)';
+    }
   }
 
   async function registerPublicKey(userId, publicKeyPem) {
@@ -395,7 +402,6 @@
     document.getElementById('chatName').innerText = conv.name;
     document.getElementById('chatAvatar').src = conv.avatar || '';
     document.getElementById('settingsBtn').style.display = (conv.type === 'group' || conv.type === 'channel') ? 'inline-block' : 'none';
-    // Если это приватный чат, показываем статус собеседника
     if (conv.type === 'private') {
       const otherId = conv.id.split('_').find(id => id !== currentUser.id);
       updateUserStatusIndicator(otherId);
@@ -499,17 +505,21 @@
       const isEncrypted = typeof displayText === 'string' && displayText.startsWith('🔒');
       if (isEncrypted) {
         const cipher = displayText.slice(1);
-        (async () => {
-          try {
-            const plain = await decryptWithMyKey(cipher);
-            const textDiv = document.querySelector(`#msg-${msg.id} .message-text`);
-            if (textDiv) textDiv.innerText = plain;
-          } catch (e) {
-            console.error('Decryption failed', e);
-            const textDiv = document.querySelector(`#msg-${msg.id} .message-text`);
-            if (textDiv) textDiv.innerText = '🔒 Ошибка расшифровки';
-          }
-        })();
+        if (cipher && /^[A-Za-z0-9+/=]+$/.test(cipher)) {
+          (async () => {
+            try {
+              const plain = await decryptWithMyKey(cipher);
+              const textDiv = document.querySelector(`#msg-${msg.id} .message-text`);
+              if (textDiv) textDiv.innerText = plain;
+            } catch (e) {
+              console.error('Decryption failed', e);
+              const textDiv = document.querySelector(`#msg-${msg.id} .message-text`);
+              if (textDiv) textDiv.innerText = '🔒 Ошибка расшифровки';
+            }
+          })();
+        } else {
+          console.warn('Invalid ciphertext format, skipping decryption');
+        }
         displayText = '🔒 Зашифрованное сообщение...';
       }
       contentHtml = `<div class="message-text" id="msg-${msg.id}">${escapeHtml(displayText)}</div>`;
@@ -544,7 +554,6 @@
 
   async function sendMessage(text, file = null) {
     if (!currentConvId) return;
-    // Проверка прав в канале: писать может только владелец или админ (на клиенте)
     if (currentConvType === 'channel') {
       const channel = channelsCache[currentConvId];
       if (channel && channel.ownerId !== currentUser.id && !(channel.admins && channel.admins.includes(currentUser.id))) {
@@ -601,7 +610,6 @@
     statusSpan.innerText = statusText;
   }
 
-  // Периодический опрос статусов для отображения в реальном времени
   setInterval(async () => {
     if (currentConvType === 'private') {
       const otherId = currentConvId.split('_').find(id => id !== currentUser.id);
@@ -614,7 +622,7 @@
         }
       }
     }
-  }, 30000); // каждые 30 секунд
+  }, 30000);
 
   // ==================== ЗВОНКИ (WebRTC) ====================
   async function startCall(targetUserId, callType, isAnswer = false, offer = null) {
