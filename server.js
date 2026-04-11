@@ -12,8 +12,9 @@ const io = new Server(server, {
 });
 
 app.use(cors());
-app.use(express.json({ limit: '50mb' }));
-app.use(express.urlencoded({ extended: true, limit: '50mb' }));
+app.use(express.json({ limit: '2gb' })); // поддержка больших файлов
+app.use(express.urlencoded({ extended: true, limit: '2gb' }));
+app.use(express.static(path.join(__dirname, 'public')));
 
 // Отключаем кэширование HTML
 app.use((req, res, next) => {
@@ -25,9 +26,8 @@ app.use((req, res, next) => {
   next();
 });
 
-app.use(express.static(path.join(__dirname, 'public')));
-
-const STORAGE_URL = 'https://skymessagedb.onrender.com';
+// ========== ПОДКЛЮЧЕНИЕ К ВНЕШНЕМУ ХРАНИЛИЩУ ==========
+const STORAGE_URL = process.env.STORAGE_URL || 'https://skymessagedb.onrender.com';
 
 async function storageRequest(endpoint, method = 'GET', body = null) {
   const url = `${STORAGE_URL}${endpoint}`;
@@ -49,7 +49,7 @@ function getPrivateConversationId(user1, user2) {
   return [user1, user2].sort().join('_');
 }
 
-// ------------------- API -------------------
+// ========== API ==========
 app.post('/register', async (req, res) => {
   const { login, password, displayName } = req.body;
   if (!login || !password) return res.status(400).json({ error: 'Login and password required' });
@@ -59,7 +59,7 @@ app.post('/register', async (req, res) => {
     if (existing) return res.status(400).json({ error: 'User already exists' });
     const id = generateId();
     const newUser = {
-      id, login, password, displayName: displayName || login, avatar: '', status: 'online', createdAt: new Date().toISOString()
+      id, login, password, displayName: displayName || login, avatar: '', status: 'online', lastSeen: Date.now(), createdAt: new Date().toISOString()
     };
     await storageRequest('/api/users/' + id, 'PUT', newUser);
     res.json({ success: true, userId: id });
@@ -75,9 +75,13 @@ app.post('/login', async (req, res) => {
     const users = await storageRequest('/api/users');
     const user = Object.values(users).find(u => u.login === login && u.password === password);
     if (!user) return res.status(401).json({ error: 'Invalid credentials' });
+    // обновляем статус и lastSeen
+    user.status = 'online';
+    user.lastSeen = Date.now();
+    await storageRequest('/api/users/' + user.id, 'PUT', user);
     const token = generateId();
     await storageRequest('/api/sessions/' + token, 'PUT', { token, userId: user.id });
-    res.json({ token, user: { id: user.id, login: user.login, displayName: user.displayName, avatar: user.avatar, status: user.status } });
+    res.json({ token, user: { id: user.id, login: user.login, displayName: user.displayName, avatar: user.avatar, status: user.status, lastSeen: user.lastSeen } });
   } catch (err) {
     console.error(err);
     res.status(500).json({ error: 'Storage error' });
@@ -94,7 +98,7 @@ app.get('/me', async (req, res) => {
     const users = await storageRequest('/api/users');
     const user = users[session.userId];
     if (!user) return res.status(404).json({ error: 'User not found' });
-    res.json({ id: user.id, login: user.login, displayName: user.displayName, avatar: user.avatar, status: user.status });
+    res.json({ id: user.id, login: user.login, displayName: user.displayName, avatar: user.avatar, status: user.status, lastSeen: user.lastSeen });
   } catch (err) {
     console.error(err);
     res.status(500).json({ error: 'Storage error' });
@@ -107,7 +111,7 @@ app.get('/search-users', async (req, res) => {
   try {
     const users = await storageRequest('/api/users');
     const results = Object.values(users).filter(u => u.login.toLowerCase().includes(q.toLowerCase())).map(u => ({
-      id: u.id, login: u.login, displayName: u.displayName, avatar: u.avatar, status: u.status
+      id: u.id, login: u.login, displayName: u.displayName, avatar: u.avatar, status: u.status, lastSeen: u.lastSeen
     }));
     res.json(results);
   } catch (err) {
@@ -184,8 +188,8 @@ app.post('/update-profile', async (req, res) => {
     if (status) user.status = status;
     await storageRequest('/api/users/' + userId, 'PUT', user);
     const sockets = [...io.sockets.sockets.values()].filter(s => s.userId === userId);
-    sockets.forEach(s => s.emit('profile-updated', { userId, displayName: user.displayName, avatar: user.avatar, status: user.status }));
-    res.json({ success: true, user: { id: user.id, login: user.login, displayName: user.displayName, avatar: user.avatar, status: user.status } });
+    sockets.forEach(s => s.emit('profile-updated', { userId, displayName: user.displayName, avatar: user.avatar, status: user.status, lastSeen: user.lastSeen }));
+    res.json({ success: true, user: { id: user.id, login: user.login, displayName: user.displayName, avatar: user.avatar, status: user.status, lastSeen: user.lastSeen } });
   } catch (err) {
     console.error(err);
     res.status(500).json({ error: 'Storage error' });
@@ -197,7 +201,7 @@ app.get('/user/:id', async (req, res) => {
     const users = await storageRequest('/api/users');
     const user = users[req.params.id];
     if (!user) return res.status(404).json({ error: 'Not found' });
-    res.json({ id: user.id, login: user.login, displayName: user.displayName, avatar: user.avatar, status: user.status, createdAt: user.createdAt });
+    res.json({ id: user.id, login: user.login, displayName: user.displayName, avatar: user.avatar, status: user.status, lastSeen: user.lastSeen, createdAt: user.createdAt });
   } catch (err) {
     console.error(err);
     res.status(500).json({ error: 'Storage error' });
@@ -378,7 +382,7 @@ app.post('/group/join', async (req, res) => {
   }
 });
 
-// Channels
+// Channels (только владелец и админы могут писать)
 app.post('/create-channel', async (req, res) => {
   const { token, name, description } = req.body;
   try {
@@ -389,7 +393,9 @@ app.post('/create-channel', async (req, res) => {
     const channelId = generateId();
     const channel = {
       id: channelId, name: name || 'New Channel', description: description || '', avatar: '', ownerId: userId,
-      subscribers: [userId], createdAt: new Date().toISOString()
+      admins: [userId],
+      subscribers: [userId],
+      createdAt: new Date().toISOString()
     };
     await storageRequest('/api/channels/' + channelId, 'PUT', channel);
     const sockets = [...io.sockets.sockets.values()].filter(s => s.userId === userId);
@@ -473,10 +479,34 @@ app.post('/channel/update', async (req, res) => {
     const channels = await storageRequest('/api/channels');
     const channel = channels[channelId];
     if (!channel) return res.status(404).json({ error: 'Channel not found' });
-    if (channel.ownerId !== userId) return res.status(403).json({ error: 'Not owner' });
+    if (channel.ownerId !== userId && !channel.admins.includes(userId)) return res.status(403).json({ error: 'Not owner or admin' });
     if (name) channel.name = name;
     if (description !== undefined) channel.description = description;
     if (avatar !== undefined) channel.avatar = avatar;
+    await storageRequest('/api/channels/' + channelId, 'PUT', channel);
+    channel.subscribers.forEach(sid => {
+      const sockets = [...io.sockets.sockets.values()].filter(s => s.userId === sid);
+      sockets.forEach(s => s.emit('channel-updated', channel));
+    });
+    res.json({ success: true });
+  } catch (err) {
+    console.error(err);
+    res.status(500).json({ error: 'Storage error' });
+  }
+});
+
+app.post('/channel/add-admin', async (req, res) => {
+  const { token, channelId, userIdToAdd } = req.body;
+  try {
+    const sessions = await storageRequest('/api/sessions');
+    const session = sessions[token];
+    if (!session) return res.status(401).json({ error: 'Unauthorized' });
+    const userId = session.userId;
+    const channels = await storageRequest('/api/channels');
+    const channel = channels[channelId];
+    if (!channel) return res.status(404).json({ error: 'Channel not found' });
+    if (channel.ownerId !== userId) return res.status(403).json({ error: 'Only owner can add admins' });
+    if (!channel.admins.includes(userIdToAdd)) channel.admins.push(userIdToAdd);
     await storageRequest('/api/channels/' + channelId, 'PUT', channel);
     channel.subscribers.forEach(sid => {
       const sockets = [...io.sockets.sockets.values()].filter(s => s.userId === sid);
@@ -521,7 +551,7 @@ app.get('/my-channels', async (req, res) => {
   }
 });
 
-// ------------------- Socket.io -------------------
+// ========== SOCKET.IO ==========
 io.use(async (socket, next) => {
   const token = socket.handshake.auth.token;
   if (!token) return next(new Error('Authentication required'));
@@ -540,6 +570,25 @@ io.on('connection', (socket) => {
   const userId = socket.userId;
   console.log(`User ${userId} connected`);
   socket.join(`user:${userId}`);
+
+  // Обновляем статус онлайн при подключении
+  (async () => {
+    const users = await storageRequest('/api/users');
+    const user = users[userId];
+    if (user && user.status !== 'online') {
+      user.status = 'online';
+      user.lastSeen = Date.now();
+      await storageRequest('/api/users/' + userId, 'PUT', user);
+      // оповещаем всех в личных чатах
+      const allUsers = await storageRequest('/api/users');
+      for (let otherId in allUsers) {
+        if (otherId !== userId) {
+          const convId = getPrivateConversationId(userId, otherId);
+          io.to(`user:${otherId}`).emit('user-status', { userId, status: 'online', lastSeen: user.lastSeen });
+        }
+      }
+    }
+  })();
 
   socket.on('get-conversations', async () => {
     try {
@@ -579,6 +628,18 @@ io.on('connection', (socket) => {
   socket.on('send-message', async (data) => {
     const { convId, type, content } = data;
     if (!convId || !content) return;
+
+    // Проверка прав для каналов (только владелец и админы могут писать)
+    if (convId.startsWith('channel_')) {
+      const channelId = convId;
+      const channels = await storageRequest('/api/channels');
+      const channel = channels[channelId];
+      if (channel && !channel.admins.includes(userId)) {
+        console.warn(`User ${userId} not allowed to write in channel ${channelId}`);
+        return;
+      }
+    }
+
     const messageId = generateId();
     const timestamp = Date.now();
     const message = { id: messageId, senderId: userId, type, content, timestamp };
@@ -592,15 +653,15 @@ io.on('connection', (socket) => {
       if (convId.includes('_')) {
         const [id1, id2] = convId.split('_');
         recipients.add(id1); recipients.add(id2);
-      } else {
+      } else if (convId.startsWith('group_')) {
         const groups = await storageRequest('/api/groups');
+        const group = groups[convId];
+        if (group) group.members.forEach(m => recipients.add(m));
+      } else if (convId.startsWith('channel_')) {
         const channels = await storageRequest('/api/channels');
-        if (groups[convId]) {
-          groups[convId].members.forEach(m => recipients.add(m));
-        } else if (channels[convId]) {
-          channels[convId].subscribers.forEach(s => recipients.add(s));
-        }
-      }
+        const channel = channels[convId];
+        if (channel) channel.subscribers.forEach(s => recipients.add(s));
+      } else return;
       recipients.forEach(uid => {
         io.to(`user:${uid}`).emit('new-message', { convId, message });
       });
@@ -621,8 +682,8 @@ io.on('connection', (socket) => {
   });
 
   // WebRTC
-  socket.on('call-user', ({ targetUserId, offer }) => {
-    io.to(`user:${targetUserId}`).emit('incoming-call', { from: userId, offer });
+  socket.on('call-user', ({ targetUserId, offer, callType }) => {
+    io.to(`user:${targetUserId}`).emit('incoming-call', { from: userId, offer, callType });
   });
   socket.on('call-answer', ({ targetUserId, answer }) => {
     io.to(`user:${targetUserId}`).emit('call-answered', { from: userId, answer });
@@ -635,6 +696,24 @@ io.on('connection', (socket) => {
   });
   socket.on('toggle-media', ({ targetUserId, type, enabled }) => {
     io.to(`user:${targetUserId}`).emit('media-toggled', { from: userId, type, enabled });
+  });
+
+  socket.on('disconnect', async () => {
+    console.log(`User ${userId} disconnected`);
+    // Обновляем статус на offline
+    const users = await storageRequest('/api/users');
+    const user = users[userId];
+    if (user) {
+      user.status = 'offline';
+      user.lastSeen = Date.now();
+      await storageRequest('/api/users/' + userId, 'PUT', user);
+      const allUsers = await storageRequest('/api/users');
+      for (let otherId in allUsers) {
+        if (otherId !== userId) {
+          io.to(`user:${otherId}`).emit('user-status', { userId, status: 'offline', lastSeen: user.lastSeen });
+        }
+      }
+    }
   });
 });
 
