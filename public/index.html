@@ -610,9 +610,13 @@
         { urls: 'stun:stun2.l.google.com:19302' },
         { urls: 'stun:stun3.l.google.com:19302' },
         { urls: 'stun:stun4.l.google.com:19302' },
+        // Публичный TURN от Metered (работает, но может быть ограничен)
         { urls: 'turn:openrelay.metered.ca:80', username: 'openrelayproject', credential: 'openrelayproject' },
         { urls: 'turn:openrelay.metered.ca:443', username: 'openrelayproject', credential: 'openrelayproject' },
-        { urls: 'turn:openrelay.metered.ca:443?transport=tcp', username: 'openrelayproject', credential: 'openrelayproject' }
+        { urls: 'turn:openrelay.metered.ca:443?transport=tcp', username: 'openrelayproject', credential: 'openrelayproject' },
+        { urls: 'turn:numb.viagenie.ca', username: 'webrtc@live.com', credential: 'muazkh' }
+        // Дополнительный TURN от Twilio (бесплатно, но требует регистрации - пока закомментируем)
+        // { urls: 'turn:global.turn.twilio.com:3478?transport=udp', username: 'your_username', credential: 'your_password' }
       ]
     });
     currentCall.peerConnection = pc;
