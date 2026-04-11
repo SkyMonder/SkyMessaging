@@ -712,7 +712,7 @@ app.post('/admin/unban', (req, res) => {
   bannedUsers.delete(userIdToUnban);
   saveData();
   res.json({ success: true });
-  });
+  
 });
 
 const PORT = process.env.PORT || 3000;
