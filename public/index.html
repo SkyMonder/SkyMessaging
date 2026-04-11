@@ -848,11 +848,33 @@
 
     const pc = new RTCPeerConnection({
       iceServers: [
-        { urls: 'stun:stun.relay.metered.ca:80' },
-        { urls: 'turn:global.relay.metered.ca:80', username: 'd487eedadce4b89104e12f15', credential: 'CrBAPA1jnE0DOzfC' },
-        { urls: 'turn:global.relay.metered.ca:80?transport=tcp', username: 'd487eedadce4b89104e12f15', credential: 'CrBAPA1jnE0DOzfC' },
-        { urls: 'turn:global.relay.metered.ca:443', username: 'd487eedadce4b89104e12f15', credential: 'CrBAPA1jnE0DOzfC' },
-        { urls: 'turns:global.relay.metered.ca:443?transport=tcp', username: 'd487eedadce4b89104e12f15', credential: 'CrBAPA1jnE0DOzfC' }
+        // Общий STUN (один)
+        { urls: "stun:stun.relay.metered.ca:80" },
+        // Набор 1
+        { urls: "turn:global.relay.metered.ca:80", username: "d487eedadce4b89104e12f15", credential: "CrBAPA1jnE0DOzfC" },
+        { urls: "turn:global.relay.metered.ca:80?transport=tcp", username: "d487eedadce4b89104e12f15", credential: "CrBAPA1jnE0DOzfC" },
+        { urls: "turn:global.relay.metered.ca:443", username: "d487eedadce4b89104e12f15", credential: "CrBAPA1jnE0DOzfC" },
+        { urls: "turns:global.relay.metered.ca:443?transport=tcp", username: "d487eedadce4b89104e12f15", credential: "CrBAPA1jnE0DOzfC" },
+        // Набор 2
+        { urls: "turn:global.relay.metered.ca:80", username: "a017c074fdc7cbbb002e95de", credential: "OLFn3kMR2NwZ6UqX" },
+        { urls: "turn:global.relay.metered.ca:80?transport=tcp", username: "a017c074fdc7cbbb002e95de", credential: "OLFn3kMR2NwZ6UqX" },
+        { urls: "turn:global.relay.metered.ca:443", username: "a017c074fdc7cbbb002e95de", credential: "OLFn3kMR2NwZ6UqX" },
+        { urls: "turns:global.relay.metered.ca:443?transport=tcp", username: "a017c074fdc7cbbb002e95de", credential: "OLFn3kMR2NwZ6UqX" },
+        // Набор 3
+        { urls: "turn:global.relay.metered.ca:80", username: "588202c8d2a3bfcd3de58fdc", credential: "kD6B2rIKnEzM+IKY" },
+        { urls: "turn:global.relay.metered.ca:80?transport=tcp", username: "588202c8d2a3bfcd3de58fdc", credential: "kD6B2rIKnEzM+IKY" },
+        { urls: "turn:global.relay.metered.ca:443", username: "588202c8d2a3bfcd3de58fdc", credential: "kD6B2rIKnEzM+IKY" },
+        { urls: "turns:global.relay.metered.ca:443?transport=tcp", username: "588202c8d2a3bfcd3de58fdc", credential: "kD6B2rIKnEzM+IKY" },
+        // Набор 4
+        { urls: "turn:global.relay.metered.ca:80", username: "591f7bbda0c0ae3cbd6e3384", credential: "Ig7jtoRmqKufvGNk" },
+        { urls: "turn:global.relay.metered.ca:80?transport=tcp", username: "591f7bbda0c0ae3cbd6e3384", credential: "Ig7jtoRmqKufvGNk" },
+        { urls: "turn:global.relay.metered.ca:443", username: "591f7bbda0c0ae3cbd6e3384", credential: "Ig7jtoRmqKufvGNk" },
+        { urls: "turns:global.relay.metered.ca:443?transport=tcp", username: "591f7bbda0c0ae3cbd6e3384", credential: "Ig7jtoRmqKufvGNk" },
+        // Набор 5
+        { urls: "turn:global.relay.metered.ca:80", username: "de174066e2309e2cd3c07c8d", credential: "jmYykg7rozJe8tJj" },
+        { urls: "turn:global.relay.metered.ca:80?transport=tcp", username: "de174066e2309e2cd3c07c8d", credential: "jmYykg7rozJe8tJj" },
+        { urls: "turn:global.relay.metered.ca:443", username: "de174066e2309e2cd3c07c8d", credential: "jmYykg7rozJe8tJj" },
+        { urls: "turns:global.relay.metered.ca:443?transport=tcp", username: "de174066e2309e2cd3c07c8d", credential: "jmYykg7rozJe8tJj" }
       ]
     });
     currentCall.peerConnection = pc;
