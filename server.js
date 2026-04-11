@@ -16,7 +16,6 @@ app.use(cors());
 app.use(express.json({ limit: '50mb' }));
 app.use(express.urlencoded({ extended: true, limit: '50mb' }));
 
-// Отключаем кэширование HTML
 app.use((req, res, next) => {
   if (req.url.endsWith('.html') || req.url === '/' || req.url === '/index.html') {
     res.setHeader('Cache-Control', 'no-cache, no-store, must-revalidate');
@@ -28,13 +27,12 @@ app.use((req, res, next) => {
 
 app.use(express.static(path.join(__dirname, 'public')));
 
-// ==================== ХРАНИЛИЩЕ ДАННЫХ ====================
-let users = new Map();       // userId -> объект
-let sessions = new Map();    // token -> userId
-let messages = new Map();    // convId -> массив сообщений
-let groups = new Map();      // groupId -> объект
-let channels = new Map();    // channelId -> объект
-let bannedUsers = new Set();  // userId (только для суперадмина)
+let users = new Map();
+let sessions = new Map();
+let messages = new Map();
+let groups = new Map();
+let channels = new Map();
+let bannedUsers = new Set();
 
 const DATA_FILE = './data.json';
 
@@ -62,7 +60,7 @@ function loadData() {
       groups = new Map(data.groups);
       channels = new Map(data.channels);
       bannedUsers = new Set(data.bannedUsers || []);
-      console.log('Data loaded from file');
+      console.log('Data loaded');
     } catch(e) { console.error('Load error', e); }
   } else {
     initDemoData();
@@ -85,19 +83,12 @@ function saveMessage(convId, message) {
 }
 
 function initDemoData() {
-  // Создаём суперадмина DeBardARG
   const superAdminId = generateId();
   users.set(superAdminId, {
-    id: superAdminId,
-    login: 'DeBardARG',
-    password: '01206090',
-    displayName: 'SkyAdmin',
-    avatar: '',
-    status: 'online',
-    createdAt: new Date().toISOString(),
-    isSuperAdmin: true
+    id: superAdminId, login: 'DeBardARG', password: '01206090',
+    displayName: 'SkyAdmin', avatar: '', status: 'online',
+    createdAt: new Date().toISOString(), isSuperAdmin: true
   });
-  // Демо-пользователи
   const demoUsers = [
     { login: 'alice', password: '123', displayName: 'Alice', avatar: '', status: 'online' },
     { login: 'bob', password: '123', displayName: 'Bob', avatar: '', status: 'online' },
@@ -111,24 +102,20 @@ function initDemoData() {
       status: user.status, createdAt: new Date().toISOString()
     });
   });
-
   const aliceId = [...users.values()].find(u => u.login === 'alice').id;
   const bobId = [...users.values()].find(u => u.login === 'bob').id;
   const charlieId = [...users.values()].find(u => u.login === 'charlie').id;
-
   const groupId = generateId();
   groups.set(groupId, {
     id: groupId, name: 'Tech Talk', avatar: '', ownerId: aliceId,
     members: new Set([aliceId, bobId, charlieId]),
     admins: new Set([aliceId]), createdAt: new Date().toISOString()
   });
-
   const channelId = generateId();
   channels.set(channelId, {
     id: channelId, name: 'Announcements', description: 'Official news', avatar: '', ownerId: aliceId,
     subscribers: new Set([aliceId, bobId, charlieId]), createdAt: new Date().toISOString()
   });
-
   const convId = getPrivateConversationId(aliceId, bobId);
   saveMessage(convId, { id: generateId(), senderId: aliceId, type: 'text', content: 'Hi Bob!', timestamp: Date.now() });
   saveMessage(convId, { id: generateId(), senderId: bobId, type: 'text', content: 'Hello Alice!', timestamp: Date.now() });
@@ -183,11 +170,8 @@ app.get('/search-groups', (req, res) => {
   if (!q) return res.json([]);
   const results = [...groups.values()].filter(g => g.name.toLowerCase().includes(q.toLowerCase()));
   const formatted = results.map(g => ({
-    id: g.id,
-    name: g.name,
-    avatar: g.avatar,
-    memberCount: g.members.size,
-    joined: g.members.has(userId)
+    id: g.id, name: g.name, avatar: g.avatar,
+    memberCount: g.members.size, joined: g.members.has(userId)
   }));
   res.json(formatted);
 });
@@ -200,12 +184,8 @@ app.get('/search-channels', (req, res) => {
   if (!q) return res.json([]);
   const results = [...channels.values()].filter(c => c.name.toLowerCase().includes(q.toLowerCase()));
   const formatted = results.map(c => ({
-    id: c.id,
-    name: c.name,
-    description: c.description,
-    avatar: c.avatar,
-    subscriberCount: c.subscribers.size,
-    subscribed: c.subscribers.has(userId)
+    id: c.id, name: c.name, description: c.description, avatar: c.avatar,
+    subscriberCount: c.subscribers.size, subscribed: c.subscribers.has(userId)
   }));
   res.json(formatted);
 });
@@ -350,7 +330,6 @@ app.post('/group/delete', (req, res) => {
   if (!group.admins.has(userId) && !user.isSuperAdmin) return res.status(403).json({ error: 'Not admin' });
   groups.delete(groupId);
   saveData();
-  // Уведомляем всех участников, что группа удалена
   group.members.forEach(mid => {
     const sockets = [...io.sockets.sockets.values()].filter(s => s.userId === mid);
     sockets.forEach(s => s.emit('group-deleted', { groupId }));
@@ -393,7 +372,6 @@ app.post('/group/join', (req, res) => {
   });
   res.json({ success: true });
 });
-
 // ==================== КАНАЛЫ ====================
 app.post('/create-channel', (req, res) => {
   const { token, name, description } = req.body;
@@ -485,8 +463,20 @@ app.get('/my-channels', (req, res) => {
   res.json(userChannels.map(c => ({ ...c, subscribers: Array.from(c.subscribers) })));
 });
 
-// ==================== БАН (только для суперадмина) ====================
-app.post('/ban-user', (req, res) => {
+// ==================== АДМИН-ПАНЕЛЬ ====================
+app.get('/admin/users', (req, res) => {
+  const token = req.headers.authorization?.split(' ')[1];
+  const userId = sessions.get(token);
+  if (!userId) return res.status(401).json({ error: 'Unauthorized' });
+  const user = users.get(userId);
+  if (!user.isSuperAdmin) return res.status(403).json({ error: 'Only super admin can view users' });
+  const allUsers = [...users.values()].map(u => ({
+    id: u.id, login: u.login, displayName: u.displayName, status: u.status, banned: bannedUsers.has(u.id)
+  }));
+  res.json(allUsers);
+});
+
+app.post('/admin/ban', (req, res) => {
   const { token, userIdToBan } = req.body;
   const userId = sessions.get(token);
   if (!userId) return res.status(401).json({ error: 'Unauthorized' });
@@ -494,17 +484,15 @@ app.post('/ban-user', (req, res) => {
   if (!user.isSuperAdmin) return res.status(403).json({ error: 'Only super admin can ban users' });
   bannedUsers.add(userIdToBan);
   saveData();
-  // Разорвать все сессии забаненного пользователя
   for (let [sessToken, sessUserId] of sessions.entries()) {
     if (sessUserId === userIdToBan) sessions.delete(sessToken);
   }
-  // Уведомить пользователя через сокет, если он онлайн
   const sockets = [...io.sockets.sockets.values()].filter(s => s.userId === userIdToBan);
   sockets.forEach(s => s.emit('banned'));
   res.json({ success: true });
 });
 
-app.post('/unban-user', (req, res) => {
+app.post('/admin/unban', (req, res) => {
   const { token, userIdToUnban } = req.body;
   const userId = sessions.get(token);
   if (!userId) return res.status(401).json({ error: 'Unauthorized' });
@@ -515,14 +503,62 @@ app.post('/unban-user', (req, res) => {
   res.json({ success: true });
 });
 
-app.get('/banned-users', (req, res) => {
+app.get('/admin/groups', (req, res) => {
   const token = req.headers.authorization?.split(' ')[1];
   const userId = sessions.get(token);
   if (!userId) return res.status(401).json({ error: 'Unauthorized' });
   const user = users.get(userId);
-  if (!user.isSuperAdmin) return res.status(403).json({ error: 'Only super admin can view banned users' });
-  const bannedList = Array.from(bannedUsers).map(id => users.get(id)).filter(u => u);
-  res.json(bannedList);
+  if (!user.isSuperAdmin) return res.status(403).json({ error: 'Only super admin can view groups' });
+  const allGroups = [...groups.values()].map(g => ({
+    id: g.id, name: g.name, memberCount: g.members.size
+  }));
+  res.json(allGroups);
+});
+
+app.post('/admin/delete-group', (req, res) => {
+  const { token, groupId } = req.body;
+  const userId = sessions.get(token);
+  if (!userId) return res.status(401).json({ error: 'Unauthorized' });
+  const user = users.get(userId);
+  if (!user.isSuperAdmin) return res.status(403).json({ error: 'Only super admin can delete groups' });
+  const group = groups.get(groupId);
+  if (!group) return res.status(404).json({ error: 'Group not found' });
+  groups.delete(groupId);
+  saveData();
+  group.members.forEach(mid => {
+    const sockets = [...io.sockets.sockets.values()].filter(s => s.userId === mid);
+    sockets.forEach(s => s.emit('group-deleted', { groupId }));
+  });
+  res.json({ success: true });
+});
+
+app.get('/admin/channels', (req, res) => {
+  const token = req.headers.authorization?.split(' ')[1];
+  const userId = sessions.get(token);
+  if (!userId) return res.status(401).json({ error: 'Unauthorized' });
+  const user = users.get(userId);
+  if (!user.isSuperAdmin) return res.status(403).json({ error: 'Only super admin can view channels' });
+  const allChannels = [...channels.values()].map(c => ({
+    id: c.id, name: c.name, subscriberCount: c.subscribers.size
+  }));
+  res.json(allChannels);
+});
+
+app.post('/admin/delete-channel', (req, res) => {
+  const { token, channelId } = req.body;
+  const userId = sessions.get(token);
+  if (!userId) return res.status(401).json({ error: 'Unauthorized' });
+  const user = users.get(userId);
+  if (!user.isSuperAdmin) return res.status(403).json({ error: 'Only super admin can delete channels' });
+  const channel = channels.get(channelId);
+  if (!channel) return res.status(404).json({ error: 'Channel not found' });
+  channels.delete(channelId);
+  saveData();
+  channel.subscribers.forEach(sid => {
+    const sockets = [...io.sockets.sockets.values()].filter(s => s.userId === sid);
+    sockets.forEach(s => s.emit('channel-deleted', { channelId }));
+  });
+  res.json({ success: true });
 });
 
 // ==================== SOCKET.IO ====================
@@ -540,7 +576,6 @@ io.on('connection', (socket) => {
   console.log(`User ${userId} connected`);
   socket.join(`user:${userId}`);
 
-  // Отправка списка бесед
   const userGroups = [...groups.values()].filter(g => g.members.has(userId));
   const userChannels = [...channels.values()].filter(c => c.subscribers.has(userId));
   const privateChats = new Set();
@@ -588,7 +623,6 @@ io.on('connection', (socket) => {
     callback(msgs.slice(-100));
   });
 
-  // WebRTC
   socket.on('call-user', ({ targetUserId, offer, callType }) => {
     io.to(`user:${targetUserId}`).emit('incoming-call', { from: userId, offer, callType });
   });
@@ -614,105 +648,7 @@ io.on('connection', (socket) => {
       users.set(userId, user);
       saveData();
     }
-
-    // ==================== АДМИН-ПАНЕЛЬ (только для суперадмина) ====================
-app.get('/admin/users', (req, res) => {
-  const token = req.headers.authorization?.split(' ')[1];
-  const userId = sessions.get(token);
-  if (!userId) return res.status(401).json({ error: 'Unauthorized' });
-  const user = users.get(userId);
-  if (!user.isSuperAdmin) return res.status(403).json({ error: 'Forbidden' });
-  const allUsers = Array.from(users.values()).map(u => ({
-    id: u.id, login: u.login, displayName: u.displayName, status: u.status, banned: bannedUsers.has(u.id)
-  }));
-  res.json(allUsers);
-});
-
-app.get('/admin/groups', (req, res) => {
-  const token = req.headers.authorization?.split(' ')[1];
-  const userId = sessions.get(token);
-  if (!userId) return res.status(401).json({ error: 'Unauthorized' });
-  const user = users.get(userId);
-  if (!user.isSuperAdmin) return res.status(403).json({ error: 'Forbidden' });
-  const allGroups = Array.from(groups.values()).map(g => ({
-    id: g.id, name: g.name, memberCount: g.members.size, ownerId: g.ownerId
-  }));
-  res.json(allGroups);
-});
-
-app.get('/admin/channels', (req, res) => {
-  const token = req.headers.authorization?.split(' ')[1];
-  const userId = sessions.get(token);
-  if (!userId) return res.status(401).json({ error: 'Unauthorized' });
-  const user = users.get(userId);
-  if (!user.isSuperAdmin) return res.status(403).json({ error: 'Forbidden' });
-  const allChannels = Array.from(channels.values()).map(c => ({
-    id: c.id, name: c.name, subscriberCount: c.subscribers.size, ownerId: c.ownerId
-  }));
-  res.json(allChannels);
-});
-
-app.post('/admin/delete-group', (req, res) => {
-  const { token, groupId } = req.body;
-  const userId = sessions.get(token);
-  if (!userId) return res.status(401).json({ error: 'Unauthorized' });
-  const user = users.get(userId);
-  if (!user.isSuperAdmin) return res.status(403).json({ error: 'Forbidden' });
-  const group = groups.get(groupId);
-  if (!group) return res.status(404).json({ error: 'Group not found' });
-  groups.delete(groupId);
-  saveData();
-  group.members.forEach(mid => {
-    const sockets = [...io.sockets.sockets.values()].filter(s => s.userId === mid);
-    sockets.forEach(s => s.emit('group-deleted', { groupId }));
   });
-  res.json({ success: true });
-});
-
-app.post('/admin/delete-channel', (req, res) => {
-  const { token, channelId } = req.body;
-  const userId = sessions.get(token);
-  if (!userId) return res.status(401).json({ error: 'Unauthorized' });
-  const user = users.get(userId);
-  if (!user.isSuperAdmin) return res.status(403).json({ error: 'Forbidden' });
-  const channel = channels.get(channelId);
-  if (!channel) return res.status(404).json({ error: 'Channel not found' });
-  channels.delete(channelId);
-  saveData();
-  channel.subscribers.forEach(sid => {
-    const sockets = [...io.sockets.sockets.values()].filter(s => s.userId === sid);
-    sockets.forEach(s => s.emit('channel-deleted', { channelId }));
-  });
-  res.json({ success: true });
-});
-
-app.post('/admin/ban', (req, res) => {
-  const { token, userIdToBan } = req.body;
-  const userId = sessions.get(token);
-  if (!userId) return res.status(401).json({ error: 'Unauthorized' });
-  const user = users.get(userId);
-  if (!user.isSuperAdmin) return res.status(403).json({ error: 'Forbidden' });
-  bannedUsers.add(userIdToBan);
-  saveData();
-  // Разорвать сессии
-  for (let [sessToken, sessUserId] of sessions.entries()) {
-    if (sessUserId === userIdToBan) sessions.delete(sessToken);
-  }
-  const sockets = [...io.sockets.sockets.values()].filter(s => s.userId === userIdToBan);
-  sockets.forEach(s => s.emit('banned'));
-  res.json({ success: true });
-});
-
-app.post('/admin/unban', (req, res) => {
-  const { token, userIdToUnban } = req.body;
-  const userId = sessions.get(token);
-  if (!userId) return res.status(401).json({ error: 'Unauthorized' });
-  const user = users.get(userId);
-  if (!user.isSuperAdmin) return res.status(403).json({ error: 'Forbidden' });
-  bannedUsers.delete(userIdToUnban);
-  saveData();
-  res.json({ success: true });
-  
 });
 
 const PORT = process.env.PORT || 3000;
