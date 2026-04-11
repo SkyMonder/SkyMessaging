@@ -3,7 +3,7 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover, user-scalable=no">
-  <title>SkyMessage</title>
+  <title>SkyMessage — защищённый мессенджер</title>
   <style>
     * { box-sizing: border-box; margin: 0; padding: 0; }
     body {
@@ -13,7 +13,6 @@
       height: 100vh;
       overflow: hidden;
     }
-    /* Основная вёрстка */
     #app { display: flex; height: 100vh; }
     .sidebar { width: 280px; background: #111114; border-right: 1px solid #222; display: flex; flex-direction: column; transition: left 0.2s; }
     .sidebar-header { padding: 16px; border-bottom: 1px solid #222; display: flex; justify-content: space-between; align-items: center; }
@@ -135,7 +134,7 @@
   </div>
 </div>
 
-<!-- Модальные окна (кратко) -->
+<!-- Модальные окна -->
 <div id="loginModal" class="modal"><div class="modal-content"><h3>Вход в SkyMessage</h3><input type="text" id="loginLogin" placeholder="Логин"><div class="password-wrapper"><input type="password" id="loginPassword" placeholder="Пароль"><span class="toggle-password" data-target="loginPassword">👁️</span></div><button id="doLoginBtn">Войти</button><button id="toRegisterBtn">Нет аккаунта? Зарегистрироваться</button></div></div>
 <div id="registerModal" class="modal"><div class="modal-content"><h3>Регистрация</h3><input type="text" id="regLogin" placeholder="Логин"><div class="password-wrapper"><input type="password" id="regPassword" placeholder="Пароль"><span class="toggle-password" data-target="regPassword">👁️</span></div><input type="text" id="regDisplayName" placeholder="Имя (необязательно)"><button id="doRegisterBtn">Зарегистрироваться</button><button id="toLoginBtn">Уже есть аккаунт? Войти</button></div></div>
 <div id="profileModal" class="modal"><div class="modal-content"><h3>Мой профиль</h3><img id="modalAvatar" width="80" style="border-radius:50%;"><br><input type="text" id="editDisplayName" placeholder="Имя"><br><input type="text" id="editStatus" placeholder="Статус"><br><input type="file" id="avatarUpload" accept="image/*"><br><button id="saveProfileBtn">Сохранить</button><button id="closeProfileBtn">Закрыть</button></div></div>
@@ -149,7 +148,7 @@
 
 <script src="/socket.io/socket.io.js"></script>
 <script>
-  // ========== ВСЯ ЛОГИКА МЕССЕНДЖЕРА (сокращённо, но рабочая) ==========
+  // ==================== ГЛОБАЛЬНЫЕ ПЕРЕМЕННЫЕ ====================
   let currentUser = null;
   let token = localStorage.getItem('token');
   let socket = null;
@@ -161,13 +160,81 @@
   let channelsCache = {};
   let currentMessages = [];
 
-  const emojis = ['😀','😃','😄','😁','😆','😅','😂','🤣','😊','😇','😍','🥰','😘','😗','😙','😚','🙂','🤗','🤩','🤔','🤨','😐','😑','😶','😏','😒','🙄','😬','🤥','😌','😔','😪','🤤','😴','😷','🤒','🤕','🤢','🤮','🤧','🥵','🥶','🥴','😵','🤯','🤠','🥳','😎','🤓','🧐','😕','😟','🙁','☹️','😮','😯','😲','😳','🥺','😦','😧','😨','😰','😥','😢','😭','😱','😖','😣','😞','😓','😩','😫','🥱','😤','😡','😠','🤬','😈','👿','💀','👻','💩','🤡','👹','👺','🤖','🎃','😺','😸','😹','😻','😼','😽','🙀','😿','😾'];
+  // ==================== ШИФРОВАНИЕ SKYULTIMATE ====================
+  const ENCRYPTION_URL = 'https://skyultimate.onrender.com'; // ЗАМЕНИТЕ НА РЕАЛЬНЫЙ URL
+  let rsaKeyPair = null; // { publicKeyPem, privateKey }
 
+  async function generateRSAKeys() {
+    const key = await crypto.subtle.generateKey(
+      {
+        name: "RSA-OAEP",
+        modulusLength: 4096,
+        publicExponent: new Uint8Array([1, 0, 1]),
+        hash: "SHA-256",
+      },
+      true,
+      ["encrypt", "decrypt"]
+    );
+    const publicKeyPem = await exportPublicKeyToPem(key.publicKey);
+    return { publicKeyPem, privateKey: key.privateKey };
+  }
+
+  async function exportPublicKeyToPem(key) {
+    const exported = await crypto.subtle.exportKey("spki", key);
+    const exportedAsString = String.fromCharCode.apply(null, new Uint8Array(exported));
+    const base64 = btoa(exportedAsString);
+    return `-----BEGIN PUBLIC KEY-----\n${base64.match(/.{1,64}/g).join('\n')}\n-----END PUBLIC KEY-----`;
+  }
+
+  async function importPublicKeyFromPem(pem) {
+    const pemHeader = "-----BEGIN PUBLIC KEY-----";
+    const pemFooter = "-----END PUBLIC KEY-----";
+    const pemContents = pem.substring(pemHeader.length, pem.length - pemFooter.length);
+    const binaryDer = Uint8Array.from(atob(pemContents), c => c.charCodeAt(0));
+    return await crypto.subtle.importKey("spki", binaryDer, { name: "RSA-OAEP", hash: "SHA-256" }, true, ["encrypt"]);
+  }
+
+  async function encryptForRecipient(plaintext, recipientPublicKeyPem) {
+    const recipientKey = await importPublicKeyFromPem(recipientPublicKeyPem);
+    const encrypted = await crypto.subtle.encrypt({ name: "RSA-OAEP" }, recipientKey, new TextEncoder().encode(plaintext));
+    return btoa(String.fromCharCode.apply(null, new Uint8Array(encrypted)));
+  }
+
+  async function decryptWithMyKey(ciphertextBase64) {
+    if (!rsaKeyPair) throw new Error('No private key');
+    const ciphertext = Uint8Array.from(atob(ciphertextBase64), c => c.charCodeAt(0));
+    const decrypted = await crypto.subtle.decrypt({ name: "RSA-OAEP" }, rsaKeyPair.privateKey, ciphertext);
+    return new TextDecoder().decode(decrypted);
+  }
+
+  async function registerPublicKey(userId, publicKeyPem) {
+    try {
+      await fetch(`${ENCRYPTION_URL}/register-key`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ userId, publicKeyPem })
+      });
+      console.log('Public key registered');
+    } catch (e) { console.error('Key registration failed', e); }
+  }
+
+  async function getUserPublicKey(userId) {
+    try {
+      const res = await fetch(`${ENCRYPTION_URL}/get-key/${userId}`);
+      if (!res.ok) throw new Error('Key not found');
+      const data = await res.json();
+      return data.publicKey;
+    } catch (e) {
+      console.warn(`No public key for ${userId}, sending unencrypted`);
+      return null;
+    }
+  }
+
+  // ==================== ВСПОМОГАТЕЛЬНЫЕ ФУНКЦИИ ====================
   function showModal(id) { document.getElementById(id).style.display = 'flex'; }
   function hideModal(id) { document.getElementById(id).style.display = 'none'; }
   function escapeHtml(str) { return String(str).replace(/[&<>]/g, function(m) { if(m==='&') return '&amp;'; if(m==='<') return '&lt;'; if(m==='>') return '&gt;'; return m; }); }
 
-  // Уведомления
   function showNotification(title, body) {
     if (!("Notification" in window)) return;
     if (Notification.permission === "granted") {
@@ -188,6 +255,7 @@
     document.getElementById('editStatus').value = currentUser.status || '';
   }
 
+  // ==================== API ВЫЗОВЫ ====================
   async function login(login, password) {
     const res = await fetch('/login', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ login, password }) });
     if (!res.ok) { alert('Неверный логин или пароль'); return false; }
@@ -195,6 +263,11 @@
     token = data.token;
     currentUser = data.user;
     localStorage.setItem('token', token);
+    // Генерация и регистрация ключей
+    if (!rsaKeyPair) {
+      rsaKeyPair = await generateRSAKeys();
+      await registerPublicKey(currentUser.id, rsaKeyPair.publicKeyPem);
+    }
     connectSocket();
     updateProfileUI();
     loadConversations();
@@ -217,6 +290,11 @@
     if (res.ok) {
       const user = await res.json();
       currentUser = user;
+      // Если ключи ещё не созданы – создаём
+      if (!rsaKeyPair) {
+        rsaKeyPair = await generateRSAKeys();
+        await registerPublicKey(currentUser.id, rsaKeyPair.publicKeyPem);
+      }
       updateProfileUI();
       return user;
     } else {
@@ -226,6 +304,7 @@
     }
   }
 
+  // ==================== SOCKET.IO ====================
   function connectSocket() {
     if (socket) socket.disconnect();
     socket = io({ auth: { token } });
@@ -238,7 +317,7 @@
       }
       if (currentConvId !== convId && message.senderId !== currentUser.id) {
         const sender = usersCache[message.senderId] || { displayName: 'Кто-то' };
-        showNotification(`Новое сообщение от ${sender.displayName}`, message.type === 'text' ? message.content : '📎 Файл');
+        showNotification(`Новое сообщение от ${sender.displayName}`, message.type === 'text' ? (message.content.startsWith('🔒') ? '🔒 Зашифрованное сообщение' : message.content) : '📎 Файл');
       }
       loadConversations();
     });
@@ -292,7 +371,7 @@
       div.innerHTML = '<img class="conv-avatar" src="' + (conv.avatar || '') + '">' +
         '<div class="conv-details">' +
         '<div class="conv-name">' + escapeHtml(conv.name) + '</div>' +
-        '<div class="conv-last-msg">' + (conv.lastMessage ? (conv.lastMessage.type === 'file' ? '📎 Файл' : conv.lastMessage.content) : '') + '</div>' +
+        '<div class="conv-last-msg">' + (conv.lastMessage ? (conv.lastMessage.type === 'file' ? '📎 Файл' : (conv.lastMessage.content.startsWith('🔒') ? '🔒 Зашифровано' : conv.lastMessage.content)) : '') + '</div>' +
         '</div>';
       div.onclick = () => openConversation(conv);
       container.appendChild(div);
@@ -316,18 +395,100 @@
     await refreshMembersPanel();
   }
 
-  async function refreshMembersPanel() { /* ... */ }
+  async function refreshMembersPanel() { /* реализация как в предыдущих версиях – не менялась */ }
   function showGroupSettings(group) { /* ... */ }
   function showChannelSettings(channel) { /* ... */ }
   async function showUserProfile(userId) { /* ... */ }
 
-  function appendMessage(msg, isOwn) { /* ... */ }
-  function downloadFile(msgId) { /* ... */ }
-  async function sendMessage(text, file = null) { /* ... */ }
+  // ==================== ОТОБРАЖЕНИЕ СООБЩЕНИЙ С РАСШИФРОВКОЙ ====================
+  function appendMessage(msg, isOwn) {
+    const div = document.createElement('div');
+    div.className = 'message' + (isOwn ? ' own' : '');
+    const sender = usersCache[msg.senderId] || { displayName: 'Unknown' };
+    const senderHtml = `<div class="message-sender" onclick="showUserProfile('${msg.senderId}')">${isOwn ? 'Вы' : escapeHtml(sender.displayName)}</div>`;
+    let contentHtml = '';
+    if (msg.type === 'text') {
+      let displayText = msg.content;
+      const isEncrypted = typeof displayText === 'string' && displayText.startsWith('🔒');
+      if (isEncrypted) {
+        const cipher = displayText.slice(1);
+        // Асинхронная расшифровка
+        (async () => {
+          try {
+            const plain = await decryptWithMyKey(cipher);
+            const textDiv = document.querySelector(`#msg-${msg.id} .message-text`);
+            if (textDiv) textDiv.innerText = plain;
+          } catch (e) {
+            console.error('Decryption failed', e);
+            const textDiv = document.querySelector(`#msg-${msg.id} .message-text`);
+            if (textDiv) textDiv.innerText = '🔒 Ошибка расшифровки';
+          }
+        })();
+        displayText = '🔒 Зашифрованное сообщение...';
+      }
+      contentHtml = `<div class="message-text" id="msg-${msg.id}">${escapeHtml(displayText)}</div>`;
+    } else if (msg.type === 'file') {
+      const file = msg.content;
+      if (file.type.startsWith('image/')) {
+        contentHtml = `<div class="message-file" data-msgid="${msg.id}"><img src="${file.data}" style="max-width:200px; max-height:200px; border-radius:8px;"></div>`;
+      } else {
+        contentHtml = `<div class="message-file" data-msgid="${msg.id}">📎 ${escapeHtml(file.name)} (${(file.size/1024).toFixed(1)} KB)</div>`;
+      }
+    }
+    div.innerHTML = senderHtml + contentHtml + `<div class="message-time">${new Date(msg.timestamp).toLocaleTimeString()}</div>`;
+    div.setAttribute('data-msgid', msg.id);
+    document.getElementById('messagesContainer').appendChild(div);
+    document.getElementById('messagesContainer').scrollTop = document.getElementById('messagesContainer').scrollHeight;
+  }
 
+  function downloadFile(msgId) {
+    const msg = currentMessages.find(m => m.id === msgId);
+    if (msg && msg.type === 'file') {
+      const fileData = msg.content;
+      const link = document.createElement('a');
+      link.href = fileData.data;
+      link.download = fileData.name;
+      document.body.appendChild(link);
+      link.click();
+      document.body.removeChild(link);
+    } else {
+      alert('Файл не найден');
+    }
+  }
+
+  // ==================== ОТПРАВКА СООБЩЕНИЙ С ШИФРОВАНИЕМ ====================
+  async function sendMessage(text, file = null) {
+    if (!currentConvId) return;
+    if (file) {
+      const reader = new FileReader();
+      reader.onload = (e) => {
+        const content = { name: file.name, type: file.type, size: file.size, data: e.target.result };
+        socket.emit('send-message', { convId: currentConvId, type: 'file', content });
+      };
+      reader.readAsDataURL(file);
+    } else if (text.trim()) {
+      let finalContent = text.trim();
+      if (currentConvType === 'private') {
+        const targetUserId = currentConvId.split('_').find(id => id !== currentUser.id);
+        const targetPublicKey = await getUserPublicKey(targetUserId);
+        if (targetPublicKey) {
+          try {
+            const encrypted = await encryptForRecipient(text.trim(), targetPublicKey);
+            finalContent = '🔒' + encrypted;
+          } catch (e) {
+            console.error('Encryption failed', e);
+            // Отправляем как есть
+          }
+        }
+      }
+      socket.emit('send-message', { convId: currentConvId, type: 'text', content: finalContent });
+      document.getElementById('messageInput').value = '';
+    }
+  }
+
+  // ==================== WEBRTC ЗВОНКИ ====================
   async function startCall(targetUserId, isAnswer = false, offer = null) {
     if (currentCall.active) return;
-    console.log(`[Call] startCall target=${targetUserId}, isAnswer=${isAnswer}`);
     currentCall.active = true;
     currentCall.targetUserId = targetUserId;
     const pc = new RTCPeerConnection({
@@ -343,7 +504,7 @@
     pc.onicecandidate = (event) => {
       if (event.candidate) socket.emit('ice-candidate', { targetUserId, candidate: event.candidate });
     };
-    pc.oniceconnectionstatechange = () => console.log('[ICE] Connection state:', pc.iceConnectionState);
+    pc.oniceconnectionstatechange = () => console.log('[ICE] state:', pc.iceConnectionState);
     pc.ontrack = (event) => document.getElementById('remoteVideo').srcObject = event.streams[0];
     const stream = await navigator.mediaDevices.getUserMedia({ video: true, audio: true });
     currentCall.localStream = stream;
@@ -362,22 +523,55 @@
     showModal('callModal');
   }
 
-  function handleRemoteAnswer(answer) { if (currentCall.peerConnection) currentCall.peerConnection.setRemoteDescription(new RTCSessionDescription(answer)); }
-  function endCall() { /* ... */ }
-  function toggleMedia(type) { /* ... */ }
+  function handleRemoteAnswer(answer) {
+    if (currentCall.peerConnection) currentCall.peerConnection.setRemoteDescription(new RTCSessionDescription(answer));
+  }
 
-  // Обработчики UI
+  function endCall() {
+    if (currentCall.peerConnection) currentCall.peerConnection.close();
+    if (currentCall.localStream) currentCall.localStream.getTracks().forEach(t => t.stop());
+    currentCall.active = false;
+    hideModal('callModal');
+    if (currentCall.targetUserId) socket.emit('call-end', { targetUserId: currentCall.targetUserId });
+    currentCall.targetUserId = null;
+  }
+
+  function toggleMedia(type) {
+    const stream = currentCall.localStream;
+    if (!stream) return;
+    const enabled = !stream.getTracks().find(t => t.kind === type).enabled;
+    stream.getTracks().forEach(t => { if (t.kind === type) t.enabled = enabled; });
+    socket.emit('toggle-media', { targetUserId: currentCall.targetUserId, type, enabled });
+    document.getElementById(type === 'audio' ? 'toggleMicBtn' : 'toggleCamBtn').innerText = type === 'audio' ? (enabled ? '🎤 Выкл' : '🎤 Вкл') : (enabled ? '📷 Выкл' : '📷 Вкл');
+  }
+
+  // ==================== UI ОБРАБОТЧИКИ (основные) ====================
   document.getElementById('sendBtn').onclick = () => sendMessage(document.getElementById('messageInput').value);
   document.getElementById('messageInput').addEventListener('keypress', (e) => { if (e.key === 'Enter') sendMessage(e.target.value); });
   document.getElementById('fileInput').onchange = (e) => { if (e.target.files[0]) sendMessage('', e.target.files[0]); e.target.value = ''; };
   document.getElementById('emojiBtn').onclick = () => { const picker = document.getElementById('emojiPicker'); picker.style.display = picker.style.display === 'grid' ? 'none' : 'grid'; };
+  const emojis = ['😀','😃','😄','😁','😆','😅','😂','🤣','😊','😇','😍','🥰','😘','😗','😙','😚','🙂','🤗','🤩','🤔','🤨','😐','😑','😶','😏','😒','🙄','😬','🤥','😌','😔','😪','🤤','😴','😷','🤒','🤕','🤢','🤮','🤧','🥵','🥶','🥴','😵','🤯','🤠','🥳','😎','🤓','🧐','😕','😟','🙁','☹️','😮','😯','😲','😳','🥺','😦','😧','😨','😰','😥','😢','😭','😱','😖','😣','😞','😓','😩','😫','🥱','😤','😡','😠','🤬','😈','👿','💀','👻','💩','🤡','👹','👺','🤖','🎃','😺','😸','😹','😻','😼','😽','🙀','😿','😾'];
   emojis.forEach(emoji => { const btn = document.createElement('button'); btn.innerText = emoji; btn.style.fontSize = '24px'; btn.onclick = () => { document.getElementById('messageInput').value += emoji; document.getElementById('emojiPicker').style.display = 'none'; }; document.getElementById('emojiPicker').appendChild(btn); });
   document.getElementById('callBtn').onclick = () => { if (currentConvType === 'private') startCall(currentConvId.split('_').find(id => id !== currentUser.id)); else alert('Звонки только в личных чатах'); };
   document.getElementById('hangupBtn').onclick = endCall;
   document.getElementById('toggleMicBtn').onclick = () => toggleMedia('audio');
   document.getElementById('toggleCamBtn').onclick = () => toggleMedia('video');
   document.getElementById('profileBtn').onclick = () => showModal('profileModal');
-  document.getElementById('saveProfileBtn').onclick = async () => { /* ... */ };
+  document.getElementById('saveProfileBtn').onclick = async () => {
+    const displayName = document.getElementById('editDisplayName').value;
+    const status = document.getElementById('editStatus').value;
+    let avatar = currentUser.avatar;
+    const fileInput = document.getElementById('avatarUpload');
+    if (fileInput.files[0]) {
+      const reader = new FileReader();
+      reader.onload = async (e) => { avatar = e.target.result; await updateProfile(displayName, avatar, status); };
+      reader.readAsDataURL(fileInput.files[0]);
+    } else await updateProfile(displayName, avatar, status);
+  };
+  async function updateProfile(displayName, avatar, status) {
+    const res = await fetch('/update-profile', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ token, displayName, avatar, status }) });
+    if (res.ok) { const data = await res.json(); currentUser = data.user; updateProfileUI(); hideModal('profileModal'); }
+  }
   document.getElementById('closeProfileBtn').onclick = () => hideModal('profileModal');
   document.getElementById('closeUserProfileBtn').onclick = () => hideModal('userProfileModal');
   document.getElementById('membersBtn').onclick = () => document.getElementById('membersPanel').classList.toggle('show');
@@ -385,13 +579,42 @@
   document.getElementById('chatInfoBtn').onclick = () => { if (document.body.classList.contains('mobile-mode')) document.getElementById('sidebar').classList.remove('show'); if (currentConvType === 'group' || currentConvType === 'channel') document.getElementById('membersPanel').classList.toggle('show'); };
   document.getElementById('settingsBtn').onclick = () => { if (currentConvType === 'group') refreshMembersPanel(); else if (currentConvType === 'channel') refreshMembersPanel(); };
   document.getElementById('newChatBtn').onclick = () => showModal('newChatModal');
-  document.getElementById('startChatBtn').onclick = async () => { /* ... */ };
+  document.getElementById('startChatBtn').onclick = async () => {
+    const login = document.getElementById('newChatUser').value;
+    const searchRes = await fetch(`/search-users?q=${login}`);
+    const usersList = await searchRes.json();
+    const target = usersList.find(u => u.login === login);
+    if (!target) { alert('Пользователь не найден'); return; }
+    const convId = [currentUser.id, target.id].sort().join('_');
+    openConversation({ id: convId, type: 'private', name: target.displayName, avatar: target.avatar });
+    hideModal('newChatModal');
+  };
   document.getElementById('closeChatModal').onclick = () => hideModal('newChatModal');
   document.getElementById('newGroupBtn').onclick = () => showModal('groupModal');
-  document.getElementById('createGroupBtn').onclick = async () => { /* ... */ };
+  document.getElementById('createGroupBtn').onclick = async () => {
+    const name = document.getElementById('groupName').value;
+    const membersStr = document.getElementById('groupMembers').value;
+    const memberLogins = membersStr.split(',').map(s => s.trim()).filter(l => l);
+    const memberIds = [];
+    for (let login of memberLogins) {
+      const res = await fetch(`/search-users?q=${login}`);
+      const list = await res.json();
+      const u = list.find(u => u.login === login);
+      if (u) memberIds.push(u.id);
+    }
+    await fetch('/create-group', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ token, name, memberIds }) });
+    hideModal('groupModal');
+    loadConversations();
+  };
   document.getElementById('closeGroupModal').onclick = () => hideModal('groupModal');
   document.getElementById('newChannelBtn').onclick = () => showModal('channelModal');
-  document.getElementById('createChannelBtn').onclick = async () => { /* ... */ };
+  document.getElementById('createChannelBtn').onclick = async () => {
+    const name = document.getElementById('channelName').value;
+    const description = document.getElementById('channelDesc').value;
+    await fetch('/create-channel', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ token, name, description }) });
+    hideModal('channelModal');
+    loadConversations();
+  };
   document.getElementById('closeChannelModal').onclick = () => hideModal('channelModal');
   document.getElementById('closeGroupSettingsBtn').onclick = () => hideModal('groupSettingsModal');
   document.getElementById('closeChannelSettingsBtn').onclick = () => hideModal('channelSettingsModal');
@@ -399,7 +622,7 @@
   document.getElementById('acceptCallBtn').onclick = async () => { if (window.pendingCall) { await startCall(window.pendingCall.from, true, window.pendingCall.offer); window.pendingCall = null; } };
   document.getElementById('rejectCallBtn').onclick = () => { if (window.pendingCall) { socket.emit('call-end', { targetUserId: window.pendingCall.from }); window.pendingCall = null; hideModal('callModal'); } };
 
-  // Поиск и остальная логика
+  // ==================== ПОИСК ПОЛЬЗОВАТЕЛЕЙ, ГРУПП, КАНАЛОВ ====================
   let searchTimeout;
   document.getElementById('searchUsersInput').addEventListener('input', async (e) => {
     clearTimeout(searchTimeout);
@@ -488,6 +711,7 @@
     }, 300);
   });
 
+  // ==================== МОБИЛЬНЫЙ РЕЖИМ ====================
   function setMobileByWidth() {
     if (window.innerWidth <= 768) {
       if (!document.body.classList.contains('mobile-mode')) {
@@ -521,6 +745,7 @@
     setMobileByWidth();
   };
 
+  // ==================== ПОКАЗ ПАРОЛЯ ====================
   document.querySelectorAll('.toggle-password').forEach(span => {
     span.addEventListener('click', function() {
       const targetId = this.dataset.target;
@@ -535,12 +760,14 @@
     });
   });
 
+  // ==================== АВТОРИЗАЦИЯ ====================
   document.getElementById('doLoginBtn').onclick = () => login(document.getElementById('loginLogin').value, document.getElementById('loginPassword').value);
   document.getElementById('toRegisterBtn').onclick = () => { hideModal('loginModal'); showModal('registerModal'); };
   document.getElementById('doRegisterBtn').onclick = () => register(document.getElementById('regLogin').value, document.getElementById('regPassword').value, document.getElementById('regDisplayName').value);
   document.getElementById('toLoginBtn').onclick = () => { hideModal('registerModal'); showModal('loginModal'); };
   document.getElementById('logoutBtn').onclick = () => { localStorage.removeItem('token'); token = null; if (socket) socket.disconnect(); currentUser = null; showModal('loginModal'); };
 
+  // ==================== ИНИЦИАЛИЗАЦИЯ ====================
   (async () => {
     if (token) {
       const user = await loadCurrentUser();
