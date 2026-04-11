@@ -3,7 +3,7 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover, user-scalable=no">
-  <title>SkyMessage — защищённый мессенджер</title>
+  <title>SkyMessage — аудио/видеозвонки</title>
   <style>
     * { box-sizing: border-box; margin: 0; padding: 0; }
     body {
@@ -111,7 +111,8 @@
       <div class="chat-actions">
         <button id="mobileModeBtn" title="Режим телефона">📱</button>
         <button id="membersBtn">👥</button>
-        <button id="callBtn">📞</button>
+        <button id="audioCallBtn" title="Аудиозвонок (только микрофон)">🎙️</button>
+        <button id="videoCallBtn" title="Видеозвонок (микрофон + камера)">📹</button>
         <button id="settingsBtn" style="display: none;">⚙️</button>
       </div>
     </div>
@@ -154,15 +155,15 @@
   let socket = null;
   let currentConvId = null;
   let currentConvType = null;
-  let currentCall = { active: false, peerConnection: null, targetUserId: null, localStream: null };
+  let currentCall = { active: false, peerConnection: null, targetUserId: null, localStream: null, callType: null };
   let usersCache = {};
   let groupsCache = {};
   let channelsCache = {};
   let currentMessages = [];
 
   // ==================== ШИФРОВАНИЕ SKYULTIMATE ====================
-  const ENCRYPTION_URL = 'https://skyultimate.onrender.com'; // ЗАМЕНИТЕ НА РЕАЛЬНЫЙ URL
-  let rsaKeyPair = null; // { publicKeyPem, privateKey }
+  const ENCRYPTION_URL = 'https://skyultimate.onrender.com';
+  let rsaKeyPair = null;
 
   async function generateRSAKeys() {
     const key = await crypto.subtle.generateKey(
@@ -209,13 +210,17 @@
 
   async function registerPublicKey(userId, publicKeyPem) {
     try {
-      await fetch(`${ENCRYPTION_URL}/register-key`, {
+      const response = await fetch(`${ENCRYPTION_URL}/register-key`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ userId, publicKeyPem })
       });
-      console.log('Public key registered');
-    } catch (e) { console.error('Key registration failed', e); }
+      if (response.ok) {
+        console.log('Public key registered');
+      } else {
+        console.error('Key registration failed', await response.text());
+      }
+    } catch (e) { console.error('Key registration error', e); }
   }
 
   async function getUserPublicKey(userId) {
@@ -263,7 +268,6 @@
     token = data.token;
     currentUser = data.user;
     localStorage.setItem('token', token);
-    // Генерация и регистрация ключей
     if (!rsaKeyPair) {
       rsaKeyPair = await generateRSAKeys();
       await registerPublicKey(currentUser.id, rsaKeyPair.publicKeyPem);
@@ -290,7 +294,6 @@
     if (res.ok) {
       const user = await res.json();
       currentUser = user;
-      // Если ключи ещё не созданы – создаём
       if (!rsaKeyPair) {
         rsaKeyPair = await generateRSAKeys();
         await registerPublicKey(currentUser.id, rsaKeyPair.publicKeyPem);
@@ -333,7 +336,7 @@
     socket.on('group-updated', (group) => { groupsCache[group.id] = group; if (currentConvId === group.id) refreshMembersPanel(); loadConversations(); });
     socket.on('channel-created', () => loadConversations());
     socket.on('channel-updated', (channel) => { channelsCache[channel.id] = channel; if (currentConvId === channel.id) refreshMembersPanel(); loadConversations(); });
-    socket.on('incoming-call', async ({ from, offer }) => {
+    socket.on('incoming-call', async ({ from, offer, callType }) => {
       if (currentCall.active) { socket.emit('call-end', { targetUserId: from }); return; }
       let callerName = from;
       if (!usersCache[from]) {
@@ -346,8 +349,9 @@
       } else {
         callerName = usersCache[from].displayName;
       }
-      document.getElementById('callerName').innerText = `Звонок от ${callerName}`;
-      window.pendingCall = { from, offer };
+      const typeText = callType === 'audio' ? 'аудиозвонок' : 'видеозвонок';
+      document.getElementById('callerName').innerText = `${typeText} от ${callerName}`;
+      window.pendingCall = { from, offer, callType };
       showModal('callModal');
     });
     socket.on('call-answered', ({ from, answer }) => handleRemoteAnswer(answer));
@@ -395,12 +399,161 @@
     await refreshMembersPanel();
   }
 
-  async function refreshMembersPanel() { /* реализация как в предыдущих версиях – не менялась */ }
-  function showGroupSettings(group) { /* ... */ }
-  function showChannelSettings(channel) { /* ... */ }
-  async function showUserProfile(userId) { /* ... */ }
+  async function refreshMembersPanel() {
+    if (!currentConvId) return;
+    if (currentConvType === 'group') {
+      const groupRes = await fetch(`/group/${currentConvId}`);
+      if (groupRes.ok) {
+        const group = await groupRes.json();
+        groupsCache[group.id] = group;
+        const membersList = document.getElementById('membersList');
+        membersList.innerHTML = '<div class="members-header">Участники</div>';
+        group.members.forEach(member => {
+          const div = document.createElement('div');
+          div.className = 'member-item';
+          div.innerHTML = `<img class="avatar" src="${member.avatar || ''}" style="width:32px;height:32px;"> <span>${escapeHtml(member.displayName)}</span>`;
+          div.onclick = () => showUserProfile(member.id);
+          membersList.appendChild(div);
+        });
+        const settingsDiv = document.getElementById('groupSettings');
+        const isAdmin = group.admins.includes(currentUser.id);
+        if (isAdmin) {
+          settingsDiv.style.display = 'block';
+          settingsDiv.innerHTML = `<button id="groupSettingsBtn">Настройки группы</button>`;
+          document.getElementById('groupSettingsBtn').onclick = () => showGroupSettings(group);
+        } else {
+          settingsDiv.style.display = 'none';
+        }
+        document.getElementById('membersPanel').classList.add('show');
+      }
+    } else if (currentConvType === 'channel') {
+      const channelRes = await fetch(`/channel/${currentConvId}`);
+      if (channelRes.ok) {
+        const channel = await channelRes.json();
+        channelsCache[channel.id] = channel;
+        const membersList = document.getElementById('membersList');
+        membersList.innerHTML = '<div class="members-header">Подписчики</div>';
+        channel.subscribers.forEach(sub => {
+          const div = document.createElement('div');
+          div.className = 'member-item';
+          div.innerHTML = `<img class="avatar" src="${sub.avatar || ''}" style="width:32px;height:32px;"> <span>${escapeHtml(sub.displayName)}</span>`;
+          div.onclick = () => showUserProfile(sub.id);
+          membersList.appendChild(div);
+        });
+        const settingsDiv = document.getElementById('groupSettings');
+        if (channel.ownerId === currentUser.id) {
+          settingsDiv.style.display = 'block';
+          settingsDiv.innerHTML = `<button id="channelSettingsBtn">Настройки канала</button>`;
+          document.getElementById('channelSettingsBtn').onclick = () => showChannelSettings(channel);
+        } else {
+          settingsDiv.style.display = 'none';
+        }
+        document.getElementById('membersPanel').classList.add('show');
+      }
+    } else {
+      document.getElementById('membersPanel').classList.remove('show');
+    }
+  }
 
-  // ==================== ОТОБРАЖЕНИЕ СООБЩЕНИЙ С РАСШИФРОВКОЙ ====================
+  function showGroupSettings(group) {
+    document.getElementById('groupNameEdit').value = group.name;
+    document.getElementById('groupMembersList').innerHTML = '';
+    group.members.forEach(member => {
+      const div = document.createElement('div');
+      div.style.display = 'flex'; div.style.alignItems = 'center'; div.style.gap = '8px'; div.style.margin = '8px 0';
+      div.innerHTML = `<img class="avatar" src="${member.avatar}" style="width:32px;height:32px;"> 
+                      <span>${escapeHtml(member.displayName)}</span>
+                      <label><input type="checkbox" class="admin-checkbox" data-userid="${member.id}" ${group.admins.includes(member.id) ? 'checked' : ''}> Админ</label>
+                      <button class="remove-member-btn" data-userid="${member.id}">Удалить</button>`;
+      document.getElementById('groupMembersList').appendChild(div);
+    });
+    document.querySelectorAll('.admin-checkbox').forEach(cb => {
+      cb.onchange = async (e) => {
+        const userId = cb.dataset.userid;
+        const isAdmin = cb.checked;
+        await fetch('/group/set-admin', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ token, groupId: group.id, userIdToSet: userId, isAdmin }) });
+        refreshMembersPanel();
+      };
+    });
+    document.querySelectorAll('.remove-member-btn').forEach(btn => {
+      btn.onclick = async (e) => {
+        const userId = btn.dataset.userid;
+        if (confirm('Удалить участника?')) {
+          await fetch('/group/remove-member', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ token, groupId: group.id, userIdToRemove: userId }) });
+          refreshMembersPanel();
+        }
+      };
+    });
+    document.getElementById('addMemberBtn').onclick = async () => {
+      const login = document.getElementById('addMemberLogin').value;
+      const searchRes = await fetch(`/search-users?q=${login}`);
+      const usersList = await searchRes.json();
+      const target = usersList.find(u => u.login === login);
+      if (!target) { alert('Пользователь не найден'); return; }
+      await fetch('/group/add-member', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ token, groupId: group.id, userIdToAdd: target.id }) });
+      refreshMembersPanel();
+    };
+    document.getElementById('saveGroupSettingsBtn').onclick = async () => {
+      const name = document.getElementById('groupNameEdit').value;
+      let avatar = group.avatar;
+      const fileInput = document.getElementById('groupAvatarUpload');
+      if (fileInput.files[0]) {
+        const reader = new FileReader();
+        reader.onload = async (e) => { avatar = e.target.result; await updateGroup(group.id, name, avatar); };
+        reader.readAsDataURL(fileInput.files[0]);
+      } else await updateGroup(group.id, name, avatar);
+    };
+    showModal('groupSettingsModal');
+  }
+
+  async function updateGroup(groupId, name, avatar) {
+    await fetch('/group/update', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ token, groupId, name, avatar }) });
+    hideModal('groupSettingsModal');
+    refreshMembersPanel();
+  }
+
+  function showChannelSettings(channel) {
+    document.getElementById('channelNameEdit').value = channel.name;
+    document.getElementById('channelDescEdit').value = channel.description;
+    document.getElementById('channelSubscribersList').innerHTML = '';
+    channel.subscribers.forEach(sub => {
+      const div = document.createElement('div');
+      div.style.display = 'flex'; div.style.alignItems = 'center'; div.style.gap = '8px'; div.style.margin = '8px 0';
+      div.innerHTML = `<img class="avatar" src="${sub.avatar}" style="width:32px;height:32px;"> <span>${escapeHtml(sub.displayName)}</span>`;
+      document.getElementById('channelSubscribersList').appendChild(div);
+    });
+    document.getElementById('saveChannelSettingsBtn').onclick = async () => {
+      const name = document.getElementById('channelNameEdit').value;
+      const description = document.getElementById('channelDescEdit').value;
+      let avatar = channel.avatar;
+      const fileInput = document.getElementById('channelAvatarUpload');
+      if (fileInput.files[0]) {
+        const reader = new FileReader();
+        reader.onload = async (e) => { avatar = e.target.result; await updateChannel(channel.id, name, description, avatar); };
+        reader.readAsDataURL(fileInput.files[0]);
+      } else await updateChannel(channel.id, name, description, avatar);
+    };
+    showModal('channelSettingsModal');
+  }
+
+  async function updateChannel(channelId, name, description, avatar) {
+    await fetch('/channel/update', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ token, channelId, name, description, avatar }) });
+    hideModal('channelSettingsModal');
+    refreshMembersPanel();
+  }
+
+  async function showUserProfile(userId) {
+    const res = await fetch(`/user/${userId}`);
+    if (!res.ok) return;
+    const user = await res.json();
+    document.getElementById('userProfileAvatar').src = user.avatar || '';
+    document.getElementById('userProfileName').innerText = user.displayName;
+    document.getElementById('userProfileLogin').innerText = user.login;
+    document.getElementById('userProfileStatus').innerText = user.status;
+    document.getElementById('userProfileCreated').innerText = new Date(user.createdAt).toLocaleDateString();
+    showModal('userProfileModal');
+  }
+
   function appendMessage(msg, isOwn) {
     const div = document.createElement('div');
     div.className = 'message' + (isOwn ? ' own' : '');
@@ -412,7 +565,6 @@
       const isEncrypted = typeof displayText === 'string' && displayText.startsWith('🔒');
       if (isEncrypted) {
         const cipher = displayText.slice(1);
-        // Асинхронная расшифровка
         (async () => {
           try {
             const plain = await decryptWithMyKey(cipher);
@@ -456,7 +608,6 @@
     }
   }
 
-  // ==================== ОТПРАВКА СООБЩЕНИЙ С ШИФРОВАНИЕМ ====================
   async function sendMessage(text, file = null) {
     if (!currentConvId) return;
     if (file) {
@@ -477,7 +628,6 @@
             finalContent = '🔒' + encrypted;
           } catch (e) {
             console.error('Encryption failed', e);
-            // Отправляем как есть
           }
         }
       }
@@ -486,11 +636,14 @@
     }
   }
 
-  // ==================== WEBRTC ЗВОНКИ ====================
-  async function startCall(targetUserId, isAnswer = false, offer = null) {
+  // ==================== ЗВОНКИ ====================
+  async function startCall(targetUserId, callType, isAnswer = false, offer = null) {
     if (currentCall.active) return;
+    console.log(`[Call] startCall target=${targetUserId}, type=${callType}, isAnswer=${isAnswer}`);
     currentCall.active = true;
     currentCall.targetUserId = targetUserId;
+    currentCall.callType = callType;
+
     const pc = new RTCPeerConnection({
       iceServers: [
         { urls: 'stun:stun.l.google.com:19302' },
@@ -501,19 +654,26 @@
       ]
     });
     currentCall.peerConnection = pc;
+
     pc.onicecandidate = (event) => {
       if (event.candidate) socket.emit('ice-candidate', { targetUserId, candidate: event.candidate });
     };
     pc.oniceconnectionstatechange = () => console.log('[ICE] state:', pc.iceConnectionState);
-    pc.ontrack = (event) => document.getElementById('remoteVideo').srcObject = event.streams[0];
-    const stream = await navigator.mediaDevices.getUserMedia({ video: true, audio: true });
+    pc.ontrack = (event) => {
+      document.getElementById('remoteVideo').srcObject = event.streams[0];
+    };
+
+    let constraints = { audio: true };
+    if (callType === 'video') constraints.video = true;
+    const stream = await navigator.mediaDevices.getUserMedia(constraints);
     currentCall.localStream = stream;
     document.getElementById('localVideo').srcObject = stream;
     stream.getTracks().forEach(track => pc.addTrack(track, stream));
+
     if (!isAnswer) {
       const offer = await pc.createOffer();
       await pc.setLocalDescription(offer);
-      socket.emit('call-user', { targetUserId, offer: pc.localDescription });
+      socket.emit('call-user', { targetUserId, offer: pc.localDescription, callType });
     } else {
       await pc.setRemoteDescription(new RTCSessionDescription(offer));
       const answer = await pc.createAnswer();
@@ -534,6 +694,7 @@
     hideModal('callModal');
     if (currentCall.targetUserId) socket.emit('call-end', { targetUserId: currentCall.targetUserId });
     currentCall.targetUserId = null;
+    currentCall.callType = null;
   }
 
   function toggleMedia(type) {
@@ -545,14 +706,27 @@
     document.getElementById(type === 'audio' ? 'toggleMicBtn' : 'toggleCamBtn').innerText = type === 'audio' ? (enabled ? '🎤 Выкл' : '🎤 Вкл') : (enabled ? '📷 Выкл' : '📷 Вкл');
   }
 
-  // ==================== UI ОБРАБОТЧИКИ (основные) ====================
+  // ==================== UI ОБРАБОТЧИКИ ====================
   document.getElementById('sendBtn').onclick = () => sendMessage(document.getElementById('messageInput').value);
   document.getElementById('messageInput').addEventListener('keypress', (e) => { if (e.key === 'Enter') sendMessage(e.target.value); });
   document.getElementById('fileInput').onchange = (e) => { if (e.target.files[0]) sendMessage('', e.target.files[0]); e.target.value = ''; };
   document.getElementById('emojiBtn').onclick = () => { const picker = document.getElementById('emojiPicker'); picker.style.display = picker.style.display === 'grid' ? 'none' : 'grid'; };
   const emojis = ['😀','😃','😄','😁','😆','😅','😂','🤣','😊','😇','😍','🥰','😘','😗','😙','😚','🙂','🤗','🤩','🤔','🤨','😐','😑','😶','😏','😒','🙄','😬','🤥','😌','😔','😪','🤤','😴','😷','🤒','🤕','🤢','🤮','🤧','🥵','🥶','🥴','😵','🤯','🤠','🥳','😎','🤓','🧐','😕','😟','🙁','☹️','😮','😯','😲','😳','🥺','😦','😧','😨','😰','😥','😢','😭','😱','😖','😣','😞','😓','😩','😫','🥱','😤','😡','😠','🤬','😈','👿','💀','👻','💩','🤡','👹','👺','🤖','🎃','😺','😸','😹','😻','😼','😽','🙀','😿','😾'];
   emojis.forEach(emoji => { const btn = document.createElement('button'); btn.innerText = emoji; btn.style.fontSize = '24px'; btn.onclick = () => { document.getElementById('messageInput').value += emoji; document.getElementById('emojiPicker').style.display = 'none'; }; document.getElementById('emojiPicker').appendChild(btn); });
-  document.getElementById('callBtn').onclick = () => { if (currentConvType === 'private') startCall(currentConvId.split('_').find(id => id !== currentUser.id)); else alert('Звонки только в личных чатах'); };
+  document.getElementById('audioCallBtn').onclick = () => {
+    if (currentConvType === 'private') {
+      startCall(currentConvId.split('_').find(id => id !== currentUser.id), 'audio');
+    } else {
+      alert('Звонки доступны только в личных чатах');
+    }
+  };
+  document.getElementById('videoCallBtn').onclick = () => {
+    if (currentConvType === 'private') {
+      startCall(currentConvId.split('_').find(id => id !== currentUser.id), 'video');
+    } else {
+      alert('Звонки доступны только в личных чатах');
+    }
+  };
   document.getElementById('hangupBtn').onclick = endCall;
   document.getElementById('toggleMicBtn').onclick = () => toggleMedia('audio');
   document.getElementById('toggleCamBtn').onclick = () => toggleMedia('video');
@@ -619,10 +793,21 @@
   document.getElementById('closeGroupSettingsBtn').onclick = () => hideModal('groupSettingsModal');
   document.getElementById('closeChannelSettingsBtn').onclick = () => hideModal('channelSettingsModal');
   document.getElementById('messagesContainer').addEventListener('click', (e) => { const fileDiv = e.target.closest('.message-file'); if (fileDiv) { const msgId = fileDiv.dataset.msgid; if (msgId) downloadFile(msgId); } });
-  document.getElementById('acceptCallBtn').onclick = async () => { if (window.pendingCall) { await startCall(window.pendingCall.from, true, window.pendingCall.offer); window.pendingCall = null; } };
-  document.getElementById('rejectCallBtn').onclick = () => { if (window.pendingCall) { socket.emit('call-end', { targetUserId: window.pendingCall.from }); window.pendingCall = null; hideModal('callModal'); } };
+  document.getElementById('acceptCallBtn').onclick = async () => {
+    if (window.pendingCall) {
+      await startCall(window.pendingCall.from, window.pendingCall.callType, true, window.pendingCall.offer);
+      window.pendingCall = null;
+    }
+  };
+  document.getElementById('rejectCallBtn').onclick = () => {
+    if (window.pendingCall) {
+      socket.emit('call-end', { targetUserId: window.pendingCall.from });
+      window.pendingCall = null;
+      hideModal('callModal');
+    }
+  };
 
-  // ==================== ПОИСК ПОЛЬЗОВАТЕЛЕЙ, ГРУПП, КАНАЛОВ ====================
+  // ==================== ПОИСК ПОЛЬЗОВАТЕЛЕЙ ====================
   let searchTimeout;
   document.getElementById('searchUsersInput').addEventListener('input', async (e) => {
     clearTimeout(searchTimeout);
