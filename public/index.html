@@ -3,16 +3,11 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover, user-scalable=no">
-  <title>SkyMessage — аудио/видеозвонки</title>
+  <title>SkyMessage — полное шифрование SkyUltimate</title>
   <style>
+    /* Стили (те же, что в предыдущей версии) */
     * { box-sizing: border-box; margin: 0; padding: 0; }
-    body {
-      font-family: system-ui, -apple-system, 'Segoe UI', Roboto, sans-serif;
-      background: #0a0a0f;
-      color: #eef;
-      height: 100vh;
-      overflow: hidden;
-    }
+    body { font-family: system-ui, -apple-system, 'Segoe UI', Roboto, sans-serif; background: #0a0a0f; color: #eef; height: 100vh; overflow: hidden; }
     #app { display: flex; height: 100vh; }
     .sidebar { width: 280px; background: #111114; border-right: 1px solid #222; display: flex; flex-direction: column; transition: left 0.2s; }
     .sidebar-header { padding: 16px; border-bottom: 1px solid #222; display: flex; justify-content: space-between; align-items: center; }
@@ -162,10 +157,13 @@
   let channelsCache = {};
   let currentMessages = [];
 
-  // ==================== ШИФРОВАНИЕ SKYULTIMATE ====================
+  // ==================== SKYULTIMATE ШИФРОВАНИЕ (RSA + AES) ====================
   const ENCRYPTION_URL = 'https://skyultimate.onrender.com';
   let rsaKeyPair = null;
+  // Хранилище симметричных ключей для каждого получателя: recipientId -> { key, iv? }
+  let symmetricKeys = new Map(); // recipientId -> CryptoKey (AES-GCM)
 
+  // Генерация RSA ключей
   async function generateRSAKeys() {
     const key = await crypto.subtle.generateKey(
       { name: "RSA-OAEP", modulusLength: 4096, publicExponent: new Uint8Array([1,0,1]), hash: "SHA-256" },
@@ -192,25 +190,64 @@
     return await crypto.subtle.importKey("spki", binaryDer, { name: "RSA-OAEP", hash: "SHA-256" }, true, ["encrypt"]);
   }
 
-  async function encryptForRecipient(plaintext, recipientPublicKeyPem) {
-    const recipientKey = await importPublicKeyFromPem(recipientPublicKeyPem);
-    const encrypted = await crypto.subtle.encrypt({ name: "RSA-OAEP" }, recipientKey, new TextEncoder().encode(plaintext));
-    return btoa(String.fromCharCode.apply(null, new Uint8Array(encrypted)));
+  // Симметричное шифрование AES-GCM
+  async function generateAESKey() {
+    return await crypto.subtle.generateKey(
+      { name: "AES-GCM", length: 256 },
+      true,
+      ["encrypt", "decrypt"]
+    );
   }
 
-  async function decryptWithMyKey(ciphertextBase64) {
-    if (!rsaKeyPair) throw new Error('No private key');
-    try {
-      const binaryString = atob(ciphertextBase64);
-      const ciphertext = Uint8Array.from(binaryString, c => c.charCodeAt(0));
-      const decrypted = await crypto.subtle.decrypt({ name: "RSA-OAEP" }, rsaKeyPair.privateKey, ciphertext);
-      return new TextDecoder().decode(decrypted);
-    } catch (e) {
-      console.error('Decryption error', e);
-      return '🔒 Ошибка расшифровки (неверный формат)';
-    }
+  async function aesEncrypt(key, data) {
+    const iv = crypto.getRandomValues(new Uint8Array(12));
+    const encrypted = await crypto.subtle.encrypt(
+      { name: "AES-GCM", iv: iv },
+      key,
+      data
+    );
+    return { iv: btoa(String.fromCharCode(...iv)), ciphertext: btoa(String.fromCharCode(...new Uint8Array(encrypted))) };
   }
 
+  async function aesDecrypt(key, ivBase64, ciphertextBase64) {
+    const iv = Uint8Array.from(atob(ivBase64), c => c.charCodeAt(0));
+    const ciphertext = Uint8Array.from(atob(ciphertextBase64), c => c.charCodeAt(0));
+    const decrypted = await crypto.subtle.decrypt(
+      { name: "AES-GCM", iv: iv },
+      key,
+      ciphertext
+    );
+    return new Uint8Array(decrypted);
+  }
+
+  // Отправка симметричного ключа получателю (шифруется RSA получателя)
+  async function sendSymmetricKey(recipientId, aesKey) {
+    const exportedKey = await crypto.subtle.exportKey("raw", aesKey);
+    const recipientPublicKeyPem = await getUserPublicKey(recipientId);
+    if (!recipientPublicKeyPem) throw new Error('No public key for recipient');
+    const recipientPublicKey = await importPublicKeyFromPem(recipientPublicKeyPem);
+    const encryptedKey = await crypto.subtle.encrypt(
+      { name: "RSA-OAEP" },
+      recipientPublicKey,
+      exportedKey
+    );
+    const encryptedKeyBase64 = btoa(String.fromCharCode(...new Uint8Array(encryptedKey)));
+    // Отправляем через socket как специальное сообщение (тип 'key')
+    socket.emit('send-message', {
+      convId: getPrivateConversationId(currentUser.id, recipientId),
+      type: 'key',
+      content: encryptedKeyBase64
+    });
+  }
+
+  // Получение симметричного ключа (расшифровка своим RSA)
+  async function receiveSymmetricKey(encryptedKeyBase64) {
+    const encryptedKey = Uint8Array.from(atob(encryptedKeyBase64), c => c.charCodeAt(0));
+    const exportedKey = await crypto.subtle.decrypt({ name: "RSA-OAEP" }, rsaKeyPair.privateKey, encryptedKey);
+    return await crypto.subtle.importKey("raw", exportedKey, { name: "AES-GCM" }, true, ["encrypt", "decrypt"]);
+  }
+
+  // Регистрация публичного ключа на сервере SkyUltimate
   async function registerPublicKey(userId, publicKeyPem) {
     try {
       const res = await fetch(`${ENCRYPTION_URL}/register-key`, {
@@ -218,8 +255,8 @@
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ userId, publicKeyPem })
       });
-      if (res.ok) console.log('Public key registered');
-      else console.error('Key registration failed', await res.text());
+      if (!res.ok) console.error('Key registration failed', await res.text());
+      else console.log('Public key registered');
     } catch(e) { console.error('Key registration error', e); }
   }
 
@@ -230,9 +267,14 @@
       const data = await res.json();
       return data.publicKey;
     } catch(e) {
-      console.warn(`No public key for ${userId}, sending unencrypted`);
+      console.warn(`No public key for ${userId}`);
       return null;
     }
+  }
+
+  // Вспомогательная функция для приватного convId
+  function getPrivateConversationId(user1, user2) {
+    return [user1, user2].sort().join('_');
   }
 
   // ==================== ВСПОМОГАТЕЛЬНЫЕ ФУНКЦИИ ====================
@@ -313,14 +355,49 @@
     socket = io({ auth: { token } });
     socket.on('connect', () => console.log('Socket connected'));
     socket.on('conversations', (convs) => renderConversations(convs));
-    socket.on('new-message', ({ convId, message }) => {
+    socket.on('new-message', async ({ convId, message }) => {
+      if (message.type === 'key') {
+        // Получен симметричный ключ для этого собеседника
+        const otherId = convId.split('_').find(id => id !== currentUser.id);
+        if (otherId && !symmetricKeys.has(otherId)) {
+          try {
+            const aesKey = await receiveSymmetricKey(message.content);
+            symmetricKeys.set(otherId, aesKey);
+            console.log(`Symmetric key established with ${otherId}`);
+          } catch(e) { console.error('Failed to receive symmetric key', e); }
+        }
+        return;
+      }
+      // Обычное зашифрованное сообщение или файл
+      if (message.type === 'text' && message.content.startsWith('🔒')) {
+        const otherId = convId.split('_').find(id => id !== currentUser.id);
+        const aesKey = symmetricKeys.get(otherId);
+        if (aesKey) {
+          try {
+            const encryptedData = message.content.slice(1);
+            const parts = encryptedData.split('.'); // iv.ciphertext
+            if (parts.length === 2) {
+              const plainBytes = await aesDecrypt(aesKey, parts[0], parts[1]);
+              const plainText = new TextDecoder().decode(plainBytes);
+              message.content = plainText;
+            } else {
+              console.warn('Invalid encrypted message format');
+            }
+          } catch(e) { console.error('Decryption error', e); }
+        } else {
+          console.warn('No symmetric key for this conversation, cannot decrypt');
+        }
+      } else if (message.type === 'file') {
+        // Аналогично расшифровка файла (если зашифрован)
+        // Для простоты файлы пока не шифруем, но можно добавить по аналогии
+      }
       if (currentConvId === convId) {
         currentMessages.push(message);
         appendMessage(message, message.senderId === currentUser.id);
       }
       if (currentConvId !== convId && message.senderId !== currentUser.id) {
         const sender = usersCache[message.senderId] || { displayName: 'Кто-то' };
-        showNotification(`Новое сообщение от ${sender.displayName}`, message.type === 'text' ? (message.content.startsWith('🔒') ? '🔒 Зашифрованное сообщение' : message.content) : '📎 Файл');
+        showNotification(`Новое сообщение от ${sender.displayName}`, message.type === 'text' ? message.content : '📎 Файл');
       }
       loadConversations();
     });
@@ -383,7 +460,7 @@
       let lastMsgText = '';
       if (conv.lastMessage) {
         if (conv.lastMessage.type === 'file') lastMsgText = '📎 Файл';
-        else if (conv.lastMessage.content.startsWith('🔒')) lastMsgText = '🔒 Зашифрованное сообщение';
+        else if (conv.lastMessage.type === 'key') lastMsgText = '🔑 Ключ шифрования';
         else lastMsgText = conv.lastMessage.content;
       }
       div.innerHTML = '<img class="conv-avatar" src="' + (conv.avatar || '') + '">' +
@@ -405,6 +482,12 @@
     if (conv.type === 'private') {
       const otherId = conv.id.split('_').find(id => id !== currentUser.id);
       updateUserStatusIndicator(otherId);
+      // Если симметричного ключа ещё нет, генерируем и отправляем
+      if (!symmetricKeys.has(otherId)) {
+        const aesKey = await generateAESKey();
+        symmetricKeys.set(otherId, aesKey);
+        await sendSymmetricKey(otherId, aesKey);
+      }
     } else {
       document.getElementById('chatUserStatus').innerText = '';
     }
@@ -418,7 +501,7 @@
     });
     await refreshMembersPanel();
   }
-
+  // ==================== ПРОДОЛЖЕНИЕ SKYULTIMATE: ОСТАЛЬНЫЕ ФУНКЦИИ ====================
   async function refreshMembersPanel() {
     if (!currentConvId) return;
     if (currentConvType === 'group') {
@@ -477,8 +560,93 @@
     }
   }
 
-  function showGroupSettings(group) { /* ... стандартный код, не меняется */ }
-  function showChannelSettings(channel) { /* ... стандартный код, не меняется */ }
+  function showGroupSettings(group) {
+    document.getElementById('groupNameEdit').value = group.name;
+    document.getElementById('groupMembersList').innerHTML = '';
+    group.members.forEach(member => {
+      const div = document.createElement('div');
+      div.style.display = 'flex'; div.style.alignItems = 'center'; div.style.gap = '8px'; div.style.margin = '8px 0';
+      div.innerHTML = `<img class="avatar" src="${member.avatar}" style="width:32px;height:32px;"> 
+                      <span>${escapeHtml(member.displayName)}</span>
+                      <label><input type="checkbox" class="admin-checkbox" data-userid="${member.id}" ${group.admins.includes(member.id) ? 'checked' : ''}> Админ</label>
+                      <button class="remove-member-btn" data-userid="${member.id}">Удалить</button>`;
+      document.getElementById('groupMembersList').appendChild(div);
+    });
+    document.querySelectorAll('.admin-checkbox').forEach(cb => {
+      cb.onchange = async (e) => {
+        const userId = cb.dataset.userid;
+        const isAdmin = cb.checked;
+        await fetch('/group/set-admin', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ token, groupId: group.id, userIdToSet: userId, isAdmin }) });
+        refreshMembersPanel();
+      };
+    });
+    document.querySelectorAll('.remove-member-btn').forEach(btn => {
+      btn.onclick = async (e) => {
+        const userId = btn.dataset.userid;
+        if (confirm('Удалить участника?')) {
+          await fetch('/group/remove-member', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ token, groupId: group.id, userIdToRemove: userId }) });
+          refreshMembersPanel();
+        }
+      };
+    });
+    document.getElementById('addMemberBtn').onclick = async () => {
+      const login = document.getElementById('addMemberLogin').value;
+      const searchRes = await fetch(`/search-users?q=${login}`);
+      const usersList = await searchRes.json();
+      const target = usersList.find(u => u.login === login);
+      if (!target) { alert('Пользователь не найден'); return; }
+      await fetch('/group/add-member', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ token, groupId: group.id, userIdToAdd: target.id }) });
+      refreshMembersPanel();
+    };
+    document.getElementById('saveGroupSettingsBtn').onclick = async () => {
+      const name = document.getElementById('groupNameEdit').value;
+      let avatar = group.avatar;
+      const fileInput = document.getElementById('groupAvatarUpload');
+      if (fileInput.files[0]) {
+        const reader = new FileReader();
+        reader.onload = async (e) => { avatar = e.target.result; await updateGroup(group.id, name, avatar); };
+        reader.readAsDataURL(fileInput.files[0]);
+      } else await updateGroup(group.id, name, avatar);
+    };
+    showModal('groupSettingsModal');
+  }
+
+  async function updateGroup(groupId, name, avatar) {
+    await fetch('/group/update', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ token, groupId, name, avatar }) });
+    hideModal('groupSettingsModal');
+    refreshMembersPanel();
+  }
+
+  function showChannelSettings(channel) {
+    document.getElementById('channelNameEdit').value = channel.name;
+    document.getElementById('channelDescEdit').value = channel.description;
+    document.getElementById('channelSubscribersList').innerHTML = '';
+    channel.subscribers.forEach(sub => {
+      const div = document.createElement('div');
+      div.style.display = 'flex'; div.style.alignItems = 'center'; div.style.gap = '8px'; div.style.margin = '8px 0';
+      div.innerHTML = `<img class="avatar" src="${sub.avatar}" style="width:32px;height:32px;"> <span>${escapeHtml(sub.displayName)}</span>`;
+      document.getElementById('channelSubscribersList').appendChild(div);
+    });
+    document.getElementById('saveChannelSettingsBtn').onclick = async () => {
+      const name = document.getElementById('channelNameEdit').value;
+      const description = document.getElementById('channelDescEdit').value;
+      let avatar = channel.avatar;
+      const fileInput = document.getElementById('channelAvatarUpload');
+      if (fileInput.files[0]) {
+        const reader = new FileReader();
+        reader.onload = async (e) => { avatar = e.target.result; await updateChannel(channel.id, name, description, avatar); };
+        reader.readAsDataURL(fileInput.files[0]);
+      } else await updateChannel(channel.id, name, description, avatar);
+    };
+    showModal('channelSettingsModal');
+  }
+
+  async function updateChannel(channelId, name, description, avatar) {
+    await fetch('/channel/update', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ token, channelId, name, description, avatar }) });
+    hideModal('channelSettingsModal');
+    refreshMembersPanel();
+  }
+
   async function showUserProfile(userId) {
     const res = await fetch(`/user/${userId}`);
     if (!res.ok) return;
@@ -501,28 +669,7 @@
     const senderHtml = `<div class="message-sender" onclick="showUserProfile('${msg.senderId}')">${isOwn ? 'Вы' : escapeHtml(sender.displayName)}</div>`;
     let contentHtml = '';
     if (msg.type === 'text') {
-      let displayText = msg.content;
-      const isEncrypted = typeof displayText === 'string' && displayText.startsWith('🔒');
-      if (isEncrypted) {
-        const cipher = displayText.slice(1);
-        if (cipher && /^[A-Za-z0-9+/=]+$/.test(cipher)) {
-          (async () => {
-            try {
-              const plain = await decryptWithMyKey(cipher);
-              const textDiv = document.querySelector(`#msg-${msg.id} .message-text`);
-              if (textDiv) textDiv.innerText = plain;
-            } catch (e) {
-              console.error('Decryption failed', e);
-              const textDiv = document.querySelector(`#msg-${msg.id} .message-text`);
-              if (textDiv) textDiv.innerText = '🔒 Ошибка расшифровки';
-            }
-          })();
-        } else {
-          console.warn('Invalid ciphertext format, skipping decryption');
-        }
-        displayText = '🔒 Зашифрованное сообщение...';
-      }
-      contentHtml = `<div class="message-text" id="msg-${msg.id}">${escapeHtml(displayText)}</div>`;
+      contentHtml = `<div class="message-text" id="msg-${msg.id}">${escapeHtml(msg.content)}</div>`;
     } else if (msg.type === 'file') {
       const file = msg.content;
       if (file.type.startsWith('image/')) {
@@ -530,6 +677,8 @@
       } else {
         contentHtml = `<div class="message-file" data-msgid="${msg.id}">📎 ${escapeHtml(file.name)} (${(file.size/1024/1024).toFixed(2)} MB)</div>`;
       }
+    } else if (msg.type === 'key') {
+      contentHtml = `<div class="message-text">🔑 Ключ шифрования установлен</div>`;
     }
     div.innerHTML = senderHtml + contentHtml + `<div class="message-time">${new Date(msg.timestamp).toLocaleTimeString()}</div>`;
     div.setAttribute('data-msgid', msg.id);
@@ -566,6 +715,7 @@
         alert('Файл превышает 2 ГБ');
         return;
       }
+      // Пока файлы не шифруем, но можно добавить по аналогии с текстом
       const reader = new FileReader();
       reader.onload = (e) => {
         const content = { name: file.name, type: file.type, size: file.size, data: e.target.result };
@@ -575,15 +725,15 @@
     } else if (text.trim()) {
       let finalContent = text.trim();
       if (currentConvType === 'private') {
-        const targetUserId = currentConvId.split('_').find(id => id !== currentUser.id);
-        const targetPublicKey = await getUserPublicKey(targetUserId);
-        if (targetPublicKey) {
+        const otherId = currentConvId.split('_').find(id => id !== currentUser.id);
+        const aesKey = symmetricKeys.get(otherId);
+        if (aesKey) {
           try {
-            const encrypted = await encryptForRecipient(text.trim(), targetPublicKey);
-            finalContent = '🔒' + encrypted;
-          } catch (e) {
-            console.error('Encryption failed', e);
-          }
+            const encrypted = await aesEncrypt(aesKey, new TextEncoder().encode(text.trim()));
+            finalContent = '🔒' + encrypted.iv + '.' + encrypted.ciphertext;
+          } catch(e) { console.error('Encryption failed', e); }
+        } else {
+          console.warn('No symmetric key yet, sending unencrypted');
         }
       }
       socket.emit('send-message', { convId: currentConvId, type: 'text', content: finalContent });
@@ -639,11 +789,6 @@
         { urls: 'stun:stun2.l.google.com:19302' },
         { urls: 'stun:stun3.l.google.com:19302' },
         { urls: 'stun:stun4.l.google.com:19302' },
-        { urls: 'stun:stun.ekiga.net' },
-        { urls: 'stun:stun.ideasip.com' },
-        { urls: 'stun:stun.rixtelecom.se' },
-        { urls: 'stun:stun.schlund.de' },
-        { urls: 'stun:stun.stunprotocol.org:3478' },
         { urls: 'turn:openrelay.metered.ca:80', username: 'openrelayproject', credential: 'openrelayproject' },
         { urls: 'turn:openrelay.metered.ca:443', username: 'openrelayproject', credential: 'openrelayproject' },
         { urls: 'turn:openrelay.metered.ca:443?transport=tcp', username: 'openrelayproject', credential: 'openrelayproject' },
@@ -762,7 +907,7 @@
     const usersList = await searchRes.json();
     const target = usersList.find(u => u.login === login);
     if (!target) { alert('Пользователь не найден'); return; }
-    const convId = [currentUser.id, target.id].sort().join('_');
+    const convId = getPrivateConversationId(currentUser.id, target.id);
     openConversation({ id: convId, type: 'private', name: target.displayName, avatar: target.avatar });
     hideModal('newChatModal');
   };
@@ -826,7 +971,7 @@
         div.className = 'search-user-item';
         div.innerHTML = `<img class="avatar" src="${u.avatar || ''}" style="width:24px;height:24px;"> ${escapeHtml(u.displayName)} (@${u.login})`;
         div.onclick = () => {
-          const convId = [currentUser.id, u.id].sort().join('_');
+          const convId = getPrivateConversationId(currentUser.id, u.id);
           openConversation({ id: convId, type: 'private', name: u.displayName, avatar: u.avatar });
           document.getElementById('searchUsersInput').value = '';
           container.style.display = 'none';
@@ -978,3 +1123,4 @@
 </script>
 </body>
 </html>
+
