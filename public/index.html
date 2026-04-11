@@ -44,7 +44,7 @@
     .file-input-label { background: #2c6e9e; border-radius: 50%; width: 40px; height: 40px; display: flex; align-items: center; justify-content: center; cursor: pointer; }
     .emoji-picker { position: absolute; bottom: 70px; background: #1e1e24; border-radius: 12px; padding: 8px; display: none; grid-template-columns: repeat(6, 1fr); gap: 8px; max-width: 300px; z-index: 100; }
     .modal { position: fixed; top: 0; left: 0; width: 100%; height: 100%; background: rgba(0,0,0,0.6); display: none; justify-content: center; align-items: center; z-index: 900; }
-    .modal-content { background: #111114; border-radius: 24px; padding: 24px; width: 90%; max-width: 400px; max-height: 80vh; overflow-y: auto; }
+    .modal-content { background: #111114; border-radius: 24px; padding: 24px; width: 90%; max-width: 600px; max-height: 80vh; overflow-y: auto; }
     .modal-content input, .modal-content textarea { width: 100%; padding: 10px; margin: 8px 0; border-radius: 12px; border: none; background: #1e1e24; color: white; }
     .modal-content button { margin-top: 12px; padding: 10px 16px; background: #2c6e9e; border: none; border-radius: 40px; color: white; cursor: pointer; }
     .search-results { margin-top: 12px; max-height: 200px; overflow-y: auto; }
@@ -63,6 +63,7 @@
     .logout-btn { background: none; border: none; color: #ff6b6b; cursor: pointer; font-size: 14px; margin-left: 12px; }
     .menu-toggle { display: none; background: none; border: none; color: white; font-size: 24px; cursor: pointer; margin-right: 10px; }
     .close-panel-btn { background: none; border: none; color: white; font-size: 20px; cursor: pointer; }
+    .admin-panel-btn { background: #2c6e9e; border: none; color: white; font-size: 14px; padding: 4px 8px; border-radius: 20px; cursor: pointer; margin-left: 8px; }
     body.mobile-mode .sidebar { position: fixed; left: -280px; z-index: 1000; height: 100%; transition: left 0.2s; }
     body.mobile-mode .sidebar.show { left: 0; }
     body.mobile-mode .members-panel { position: fixed; right: -280px; transition: right 0.2s; }
@@ -84,6 +85,7 @@
         <button id="newChatBtn" style="background:none; border:none; color:white; font-size:20px;">➕</button>
         <button id="newGroupBtn" style="background:none; border:none; color:white; font-size:20px;">👥</button>
         <button id="newChannelBtn" style="background:none; border:none; color:white; font-size:20px;">📢</button>
+        <button id="adminPanelBtn" class="admin-panel-btn" style="display: none;">👑 Админ-панель</button>
         <button id="logoutBtn" class="logout-btn" title="Выйти">🚪</button>
       </div>
     </div>
@@ -138,6 +140,29 @@
 <div id="userProfileModal" class="modal"><div class="modal-content"><h3>Профиль пользователя</h3><img id="userProfileAvatar" width="80"><div><strong>Имя:</strong> <span id="userProfileName"></span></div><div><strong>Логин:</strong> <span id="userProfileLogin"></span></div><div><strong>Статус:</strong> <span id="userProfileStatus"></span></div><div><strong>Был(а) в сети:</strong> <span id="userProfileLastSeen"></span></div><div><strong>Зарегистрирован:</strong> <span id="userProfileCreated"></span></div><button id="closeUserProfileBtn">Закрыть</button></div></div>
 <div id="groupSettingsModal" class="modal"><div class="modal-content"><h3>Настройки группы</h3><input type="text" id="groupNameEdit" placeholder="Название группы" maxlength="50"><input type="file" id="groupAvatarUpload" accept="image/*"><button id="saveGroupSettingsBtn">Сохранить</button><h4>Участники</h4><div id="groupMembersList"></div><div><input type="text" id="addMemberLogin" placeholder="Логин для добавления"><button id="addMemberBtn">Добавить</button></div><button id="closeGroupSettingsBtn">Закрыть</button></div></div>
 <div id="channelSettingsModal" class="modal"><div class="modal-content"><h3>Настройки канала</h3><input type="text" id="channelNameEdit" placeholder="Название" maxlength="50"><textarea id="channelDescEdit" placeholder="Описание" maxlength="200"></textarea><input type="file" id="channelAvatarUpload" accept="image/*"><button id="saveChannelSettingsBtn">Сохранить</button><h4>Подписчики</h4><div id="channelSubscribersList"></div><button id="closeChannelSettingsBtn">Закрыть</button></div></div>
+<div id="adminModal" class="modal">
+  <div class="modal-content">
+    <h3>Панель администратора</h3>
+    <div style="display: flex; gap: 10px; margin-bottom: 16px;">
+      <button id="adminUsersTab">Пользователи</button>
+      <button id="adminGroupsTab">Группы</button>
+      <button id="adminChannelsTab">Каналы</button>
+    </div>
+    <div id="adminUsersPanel" style="display: none;">
+      <h4>Пользователи</h4>
+      <div id="adminUsersList" style="max-height: 300px; overflow-y: auto;"></div>
+    </div>
+    <div id="adminGroupsPanel" style="display: none;">
+      <h4>Группы</h4>
+      <div id="adminGroupsList" style="max-height: 300px; overflow-y: auto;"></div>
+    </div>
+    <div id="adminChannelsPanel" style="display: none;">
+      <h4>Каналы</h4>
+      <div id="adminChannelsList" style="max-height: 300px; overflow-y: auto;"></div>
+    </div>
+    <button id="closeAdminModal">Закрыть</button>
+  </div>
+</div>
 <div id="callModal" class="call-modal">
   <div class="call-container">
     <h3 id="callerName">Звонок <span id="callTimer" class="call-timer">00:00</span></h3>
@@ -191,10 +216,6 @@
     }
   }
 
-  function isAdminUser() {
-    return currentUser && currentUser.login === 'DeBardARG';
-  }
-
   function updateProfileUI() {
     if (!currentUser) return;
     document.getElementById('currentDisplayName').innerText = currentUser.displayName;
@@ -211,24 +232,21 @@
     const data = await res.json();
     token = data.token;
     currentUser = data.user;
-    if (currentUser.login === 'DeBardARG' && password === '01206090') {
-      currentUser.isSuperAdmin = true;
-    } else {
-      currentUser.isSuperAdmin = false;
-    }
     localStorage.setItem('token', token);
     connectSocket();
     updateProfileUI();
     loadConversations();
     hideModal('loginModal');
+    // Показать кнопку админ-панели, если пользователь суперадмин
+    if (currentUser.isSuperAdmin) {
+      document.getElementById('adminPanelBtn').style.display = 'inline-block';
+    } else {
+      document.getElementById('adminPanelBtn').style.display = 'none';
+    }
     return true;
   }
 
   async function register(login, password, displayName) {
-    if (!isAdminUser()) {
-      if (login.length > 30) { alert('Логин не более 30 символов'); return false; }
-      if (displayName && displayName.length > 50) { alert('Имя не более 50 символов'); return false; }
-    }
     const res = await fetch('/register', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ login, password, displayName }) });
     if (!res.ok) { alert('Ошибка регистрации'); return false; }
     alert('Регистрация успешна, теперь войдите');
@@ -243,9 +261,12 @@
     if (res.ok) {
       const user = await res.json();
       currentUser = user;
-      if (currentUser.login === 'DeBardARG') currentUser.isSuperAdmin = true;
-      else currentUser.isSuperAdmin = false;
       updateProfileUI();
+      if (currentUser.isSuperAdmin) {
+        document.getElementById('adminPanelBtn').style.display = 'inline-block';
+      } else {
+        document.getElementById('adminPanelBtn').style.display = 'none';
+      }
       return user;
     } else {
       localStorage.removeItem('token');
@@ -253,6 +274,117 @@
       return null;
     }
   }
+
+  // ==================== АДМИН-ПАНЕЛЬ ====================
+  async function loadAdminUsers() {
+    const res = await fetch('/admin/users', { headers: { 'Authorization': `Bearer ${token}` } });
+    if (!res.ok) { alert('Ошибка загрузки пользователей'); return; }
+    const users = await res.json();
+    const container = document.getElementById('adminUsersList');
+    container.innerHTML = '';
+    users.forEach(u => {
+      const div = document.createElement('div');
+      div.style.display = 'flex'; div.style.justifyContent = 'space-between'; div.style.alignItems = 'center'; div.style.padding = '8px'; div.style.borderBottom = '1px solid #222';
+      div.innerHTML = `<span>${escapeHtml(u.displayName)} (@${escapeHtml(u.login)}) - ${u.status} ${u.banned ? '🔴 Забанен' : '🟢 Активен'}</span>`;
+      const btn = document.createElement('button');
+      btn.innerText = u.banned ? 'Разбанить' : 'Забанить';
+      btn.style.background = u.banned ? '#4caf50' : '#f44336';
+      btn.style.border = 'none'; btn.style.padding = '4px 12px'; btn.style.borderRadius = '20px'; btn.style.cursor = 'pointer';
+      btn.onclick = async () => {
+        const endpoint = u.banned ? '/admin/unban' : '/admin/ban';
+        const res = await fetch(endpoint, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ token, userIdToBan: u.id }) });
+        if (res.ok) {
+          alert(u.banned ? 'Пользователь разбанен' : 'Пользователь забанен');
+          loadAdminUsers();
+        } else alert('Ошибка');
+      };
+      div.appendChild(btn);
+      container.appendChild(div);
+    });
+  }
+
+  async function loadAdminGroups() {
+    const res = await fetch('/admin/groups', { headers: { 'Authorization': `Bearer ${token}` } });
+    if (!res.ok) { alert('Ошибка загрузки групп'); return; }
+    const groups = await res.json();
+    const container = document.getElementById('adminGroupsList');
+    container.innerHTML = '';
+    groups.forEach(g => {
+      const div = document.createElement('div');
+      div.style.display = 'flex'; div.style.justifyContent = 'space-between'; div.style.alignItems = 'center'; div.style.padding = '8px'; div.style.borderBottom = '1px solid #222';
+      div.innerHTML = `<span>${escapeHtml(g.name)} (участников: ${g.memberCount})</span>`;
+      const btn = document.createElement('button');
+      btn.innerText = 'Удалить группу';
+      btn.style.background = '#f44336'; btn.style.border = 'none'; btn.style.padding = '4px 12px'; btn.style.borderRadius = '20px'; btn.style.cursor = 'pointer';
+      btn.onclick = async () => {
+        if (confirm(`Удалить группу "${g.name}"?`)) {
+          const res = await fetch('/admin/delete-group', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ token, groupId: g.id }) });
+          if (res.ok) {
+            alert('Группа удалена');
+            loadAdminGroups();
+          } else alert('Ошибка');
+        }
+      };
+      div.appendChild(btn);
+      container.appendChild(div);
+    });
+  }
+
+  async function loadAdminChannels() {
+    const res = await fetch('/admin/channels', { headers: { 'Authorization': `Bearer ${token}` } });
+    if (!res.ok) { alert('Ошибка загрузки каналов'); return; }
+    const channels = await res.json();
+    const container = document.getElementById('adminChannelsList');
+    container.innerHTML = '';
+    channels.forEach(c => {
+      const div = document.createElement('div');
+      div.style.display = 'flex'; div.style.justifyContent = 'space-between'; div.style.alignItems = 'center'; div.style.padding = '8px'; div.style.borderBottom = '1px solid #222';
+      div.innerHTML = `<span>${escapeHtml(c.name)} (подписчиков: ${c.subscriberCount})</span>`;
+      const btn = document.createElement('button');
+      btn.innerText = 'Удалить канал';
+      btn.style.background = '#f44336'; btn.style.border = 'none'; btn.style.padding = '4px 12px'; btn.style.borderRadius = '20px'; btn.style.cursor = 'pointer';
+      btn.onclick = async () => {
+        if (confirm(`Удалить канал "${c.name}"?`)) {
+          const res = await fetch('/admin/delete-channel', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ token, channelId: c.id }) });
+          if (res.ok) {
+            alert('Канал удалён');
+            loadAdminChannels();
+          } else alert('Ошибка');
+        }
+      };
+      div.appendChild(btn);
+      container.appendChild(div);
+    });
+  }
+
+  document.getElementById('adminPanelBtn').onclick = () => {
+    showModal('adminModal');
+    loadAdminUsers();
+    loadAdminGroups();
+    loadAdminChannels();
+    document.getElementById('adminUsersPanel').style.display = 'block';
+    document.getElementById('adminGroupsPanel').style.display = 'none';
+    document.getElementById('adminChannelsPanel').style.display = 'none';
+  };
+  document.getElementById('adminUsersTab').onclick = () => {
+    document.getElementById('adminUsersPanel').style.display = 'block';
+    document.getElementById('adminGroupsPanel').style.display = 'none';
+    document.getElementById('adminChannelsPanel').style.display = 'none';
+    loadAdminUsers();
+  };
+  document.getElementById('adminGroupsTab').onclick = () => {
+    document.getElementById('adminUsersPanel').style.display = 'none';
+    document.getElementById('adminGroupsPanel').style.display = 'block';
+    document.getElementById('adminChannelsPanel').style.display = 'none';
+    loadAdminGroups();
+  };
+  document.getElementById('adminChannelsTab').onclick = () => {
+    document.getElementById('adminUsersPanel').style.display = 'none';
+    document.getElementById('adminGroupsPanel').style.display = 'none';
+    document.getElementById('adminChannelsPanel').style.display = 'block';
+    loadAdminChannels();
+  };
+  document.getElementById('closeAdminModal').onclick = () => hideModal('adminModal');
 
   // ==================== SOCKET.IO ====================
   function connectSocket() {
@@ -287,6 +419,32 @@
     socket.on('group-updated', (group) => { groupsCache[group.id] = group; if (currentConvId === group.id) refreshMembersPanel(); loadConversations(); });
     socket.on('channel-created', () => loadConversations());
     socket.on('channel-updated', (channel) => { channelsCache[channel.id] = channel; if (currentConvId === channel.id) refreshMembersPanel(); loadConversations(); });
+    socket.on('group-deleted', ({ groupId }) => {
+      if (currentConvId === groupId) {
+        currentConvId = null;
+        document.getElementById('messagesContainer').innerHTML = '';
+        document.getElementById('chatName').innerText = '';
+        document.getElementById('chatAvatar').src = '';
+        alert('Группа была удалена администратором');
+      }
+      loadConversations();
+    });
+    socket.on('channel-deleted', ({ channelId }) => {
+      if (currentConvId === channelId) {
+        currentConvId = null;
+        document.getElementById('messagesContainer').innerHTML = '';
+        document.getElementById('chatName').innerText = '';
+        document.getElementById('chatAvatar').src = '';
+        alert('Канал был удалён администратором');
+      }
+      loadConversations();
+    });
+    socket.on('banned', () => {
+      alert('Ваш аккаунт был забанен. Вы будете перенаправлены на страницу входа.');
+      localStorage.removeItem('token');
+      token = null;
+      location.reload();
+    });
     socket.on('incoming-call', async ({ from, offer, callType }) => {
       if (currentCall.active) { socket.emit('call-end', { targetUserId: from }); return; }
       let callerName = from;
@@ -383,8 +541,8 @@
           membersList.appendChild(div);
         }
         const settingsDiv = document.getElementById('groupSettings');
-        settingsDiv.innerHTML = ''; // очищаем
-        const isAdmin = group.admins.includes(currentUser.id);
+        settingsDiv.innerHTML = '';
+        const isAdmin = group.admins.includes(currentUser.id) || currentUser.isSuperAdmin;
         if (isAdmin) {
           const settingsBtn = document.createElement('button');
           settingsBtn.innerText = 'Настройки группы';
@@ -435,7 +593,7 @@
         }
         const settingsDiv = document.getElementById('groupSettings');
         settingsDiv.innerHTML = '';
-        const isOwner = channel.ownerId === currentUser.id;
+        const isOwner = channel.ownerId === currentUser.id || currentUser.isSuperAdmin;
         const isAdmin = channel.admins && channel.admins.includes(currentUser.id);
         if (isOwner || isAdmin) {
           const settingsBtn = document.createElement('button');
@@ -493,10 +651,6 @@
     };
     document.getElementById('saveGroupSettingsBtn').onclick = async () => {
       let name = document.getElementById('groupNameEdit').value;
-      if (!isAdminUser() && name.length > 50) {
-        alert('Название группы не более 50 символов');
-        return;
-      }
       let avatar = group.avatar;
       const fileInput = document.getElementById('groupAvatarUpload');
       if (fileInput.files[0]) {
@@ -527,10 +681,6 @@
     document.getElementById('saveChannelSettingsBtn').onclick = async () => {
       let name = document.getElementById('channelNameEdit').value;
       let description = document.getElementById('channelDescEdit').value;
-      if (!isAdminUser()) {
-        if (name.length > 50) { alert('Название не более 50 символов'); return; }
-        if (description.length > 200) { alert('Описание не более 200 символов'); return; }
-      }
       let avatar = channel.avatar;
       const fileInput = document.getElementById('channelAvatarUpload');
       if (fileInput.files[0]) {
@@ -798,10 +948,6 @@
   document.getElementById('saveProfileBtn').onclick = async () => {
     let displayName = document.getElementById('editDisplayName').value;
     let status = document.getElementById('editStatus').value;
-    if (!isAdminUser()) {
-      if (displayName.length > 50) { alert('Имя не более 50 символов'); return; }
-      if (status.length > 30) { alert('Статус не более 30 символов'); return; }
-    }
     let avatar = currentUser.avatar;
     const fileInput = document.getElementById('avatarUpload');
     if (fileInput.files[0]) {
@@ -835,10 +981,6 @@
   document.getElementById('newGroupBtn').onclick = () => showModal('groupModal');
   document.getElementById('createGroupBtn').onclick = async () => {
     let name = document.getElementById('groupName').value;
-    if (!isAdminUser() && name.length > 50) {
-      alert('Название группы не более 50 символов');
-      return;
-    }
     const membersStr = document.getElementById('groupMembers').value;
     const memberLogins = membersStr.split(',').map(s => s.trim()).filter(l => l);
     const memberIds = [];
@@ -857,10 +999,6 @@
   document.getElementById('createChannelBtn').onclick = async () => {
     let name = document.getElementById('channelName').value;
     let description = document.getElementById('channelDesc').value;
-    if (!isAdminUser()) {
-      if (name.length > 50) { alert('Название канала не более 50 символов'); return; }
-      if (description.length > 200) { alert('Описание не более 200 символов'); return; }
-    }
     await fetch('/create-channel', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ token, name, description }) });
     hideModal('channelModal');
     loadConversations();
