@@ -3,11 +3,16 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover, user-scalable=no">
-  <title>SkyMessage — полное шифрование SkyUltimate</title>
+  <title>SkyMessage — шифрование SkyUltimate</title>
   <style>
-    /* Стили (те же, что в предыдущей версии) */
     * { box-sizing: border-box; margin: 0; padding: 0; }
-    body { font-family: system-ui, -apple-system, 'Segoe UI', Roboto, sans-serif; background: #0a0a0f; color: #eef; height: 100vh; overflow: hidden; }
+    body {
+      font-family: system-ui, -apple-system, 'Segoe UI', Roboto, sans-serif;
+      background: #0a0a0f;
+      color: #eef;
+      height: 100vh;
+      overflow: hidden;
+    }
     #app { display: flex; height: 100vh; }
     .sidebar { width: 280px; background: #111114; border-right: 1px solid #222; display: flex; flex-direction: column; transition: left 0.2s; }
     .sidebar-header { padding: 16px; border-bottom: 1px solid #222; display: flex; justify-content: space-between; align-items: center; }
@@ -157,13 +162,13 @@
   let channelsCache = {};
   let currentMessages = [];
 
-  // ==================== SKYULTIMATE ШИФРОВАНИЕ (RSA + AES) ====================
-  const ENCRYPTION_URL = 'https://skyultimate.onrender.com';
-  let rsaKeyPair = null;
-  // Хранилище симметричных ключей для каждого получателя: recipientId -> { key, iv? }
-  let symmetricKeys = new Map(); // recipientId -> CryptoKey (AES-GCM)
+  // Хранилище симметричных ключей для приватных чатов (userId -> AES key)
+  let symmetricKeys = new Map();
 
-  // Генерация RSA ключей
+  // ==================== ШИФРОВАНИЕ SKYULTIMATE ====================
+  const ENCRYPTION_URL = 'https://skyultimate.onrender.com';
+  let rsaKeyPair = null; // { publicKeyPem, privateKey }
+
   async function generateRSAKeys() {
     const key = await crypto.subtle.generateKey(
       { name: "RSA-OAEP", modulusLength: 4096, publicExponent: new Uint8Array([1,0,1]), hash: "SHA-256" },
@@ -176,8 +181,7 @@
 
   async function exportPublicKeyToPem(key) {
     const exported = await crypto.subtle.exportKey("spki", key);
-    const exportedAsString = String.fromCharCode.apply(null, new Uint8Array(exported));
-    const base64 = btoa(exportedAsString);
+    const base64 = btoa(String.fromCharCode(...new Uint8Array(exported)));
     return `-----BEGIN PUBLIC KEY-----\n${base64.match(/.{1,64}/g).join('\n')}\n-----END PUBLIC KEY-----`;
   }
 
@@ -190,7 +194,44 @@
     return await crypto.subtle.importKey("spki", binaryDer, { name: "RSA-OAEP", hash: "SHA-256" }, true, ["encrypt"]);
   }
 
-  // Симметричное шифрование AES-GCM
+  async function encryptWithRSA(plaintext, publicKeyPem) {
+    const publicKey = await importPublicKeyFromPem(publicKeyPem);
+    const encrypted = await crypto.subtle.encrypt({ name: "RSA-OAEP" }, publicKey, new TextEncoder().encode(plaintext));
+    return btoa(String.fromCharCode(...new Uint8Array(encrypted)));
+  }
+
+  async function decryptWithRSA(ciphertextBase64) {
+    if (!rsaKeyPair) throw new Error('No private key');
+    const ciphertext = Uint8Array.from(atob(ciphertextBase64), c => c.charCodeAt(0));
+    const decrypted = await crypto.subtle.decrypt({ name: "RSA-OAEP" }, rsaKeyPair.privateKey, ciphertext);
+    return new TextDecoder().decode(decrypted);
+  }
+
+  async function registerPublicKey(userId, publicKeyPem) {
+    try {
+      const res = await fetch(`${ENCRYPTION_URL}/register-key`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ userId, publicKeyPem })
+      });
+      if (res.ok) console.log('Public key registered');
+      else console.error('Key registration failed', await res.text());
+    } catch(e) { console.error('Key registration error', e); }
+  }
+
+  async function getUserPublicKey(userId) {
+    try {
+      const res = await fetch(`${ENCRYPTION_URL}/get-key/${userId}`);
+      if (!res.ok) throw new Error('Key not found');
+      const data = await res.json();
+      return data.publicKey;
+    } catch(e) {
+      console.warn(`No public key for ${userId}, cannot encrypt`);
+      return null;
+    }
+  }
+
+  // AES-256-GCM
   async function generateAESKey() {
     return await crypto.subtle.generateKey(
       { name: "AES-GCM", length: 256 },
@@ -199,12 +240,22 @@
     );
   }
 
-  async function aesEncrypt(key, data) {
+  async function exportAESKey(key) {
+    const raw = await crypto.subtle.exportKey("raw", key);
+    return btoa(String.fromCharCode(...new Uint8Array(raw)));
+  }
+
+  async function importAESKey(base64Key) {
+    const raw = Uint8Array.from(atob(base64Key), c => c.charCodeAt(0));
+    return await crypto.subtle.importKey("raw", raw, { name: "AES-GCM" }, true, ["encrypt", "decrypt"]);
+  }
+
+  async function aesEncrypt(key, plaintext) {
     const iv = crypto.getRandomValues(new Uint8Array(12));
     const encrypted = await crypto.subtle.encrypt(
       { name: "AES-GCM", iv: iv },
       key,
-      data
+      new TextEncoder().encode(plaintext)
     );
     return { iv: btoa(String.fromCharCode(...iv)), ciphertext: btoa(String.fromCharCode(...new Uint8Array(encrypted))) };
   }
@@ -217,64 +268,7 @@
       key,
       ciphertext
     );
-    return new Uint8Array(decrypted);
-  }
-
-  // Отправка симметричного ключа получателю (шифруется RSA получателя)
-  async function sendSymmetricKey(recipientId, aesKey) {
-    const exportedKey = await crypto.subtle.exportKey("raw", aesKey);
-    const recipientPublicKeyPem = await getUserPublicKey(recipientId);
-    if (!recipientPublicKeyPem) throw new Error('No public key for recipient');
-    const recipientPublicKey = await importPublicKeyFromPem(recipientPublicKeyPem);
-    const encryptedKey = await crypto.subtle.encrypt(
-      { name: "RSA-OAEP" },
-      recipientPublicKey,
-      exportedKey
-    );
-    const encryptedKeyBase64 = btoa(String.fromCharCode(...new Uint8Array(encryptedKey)));
-    // Отправляем через socket как специальное сообщение (тип 'key')
-    socket.emit('send-message', {
-      convId: getPrivateConversationId(currentUser.id, recipientId),
-      type: 'key',
-      content: encryptedKeyBase64
-    });
-  }
-
-  // Получение симметричного ключа (расшифровка своим RSA)
-  async function receiveSymmetricKey(encryptedKeyBase64) {
-    const encryptedKey = Uint8Array.from(atob(encryptedKeyBase64), c => c.charCodeAt(0));
-    const exportedKey = await crypto.subtle.decrypt({ name: "RSA-OAEP" }, rsaKeyPair.privateKey, encryptedKey);
-    return await crypto.subtle.importKey("raw", exportedKey, { name: "AES-GCM" }, true, ["encrypt", "decrypt"]);
-  }
-
-  // Регистрация публичного ключа на сервере SkyUltimate
-  async function registerPublicKey(userId, publicKeyPem) {
-    try {
-      const res = await fetch(`${ENCRYPTION_URL}/register-key`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ userId, publicKeyPem })
-      });
-      if (!res.ok) console.error('Key registration failed', await res.text());
-      else console.log('Public key registered');
-    } catch(e) { console.error('Key registration error', e); }
-  }
-
-  async function getUserPublicKey(userId) {
-    try {
-      const res = await fetch(`${ENCRYPTION_URL}/get-key/${userId}`);
-      if (!res.ok) throw new Error('Key not found');
-      const data = await res.json();
-      return data.publicKey;
-    } catch(e) {
-      console.warn(`No public key for ${userId}`);
-      return null;
-    }
-  }
-
-  // Вспомогательная функция для приватного convId
-  function getPrivateConversationId(user1, user2) {
-    return [user1, user2].sort().join('_');
+    return new TextDecoder().decode(decrypted);
   }
 
   // ==================== ВСПОМОГАТЕЛЬНЫЕ ФУНКЦИИ ====================
@@ -349,55 +343,45 @@
     }
   }
 
+  function getPrivateConversationId(user1, user2) {
+    return [user1, user2].sort().join('_');
+  }
+
   // ==================== SOCKET.IO ====================
   function connectSocket() {
     if (socket) socket.disconnect();
     socket = io({ auth: { token } });
     socket.on('connect', () => console.log('Socket connected'));
     socket.on('conversations', (convs) => renderConversations(convs));
-    socket.on('new-message', async ({ convId, message }) => {
+    socket.on('new-message', ({ convId, message }) => {
+      // Обработка ключа шифрования
       if (message.type === 'key') {
-        // Получен симметричный ключ для этого собеседника
-        const otherId = convId.split('_').find(id => id !== currentUser.id);
-        if (otherId && !symmetricKeys.has(otherId)) {
-          try {
-            const aesKey = await receiveSymmetricKey(message.content);
-            symmetricKeys.set(otherId, aesKey);
-            console.log(`Symmetric key established with ${otherId}`);
-          } catch(e) { console.error('Failed to receive symmetric key', e); }
+        if (message.senderId !== currentUser.id && currentConvId === convId) {
+          (async () => {
+            try {
+              const decryptedKeyBase64 = await decryptWithRSA(message.content);
+              const aesKey = await importAESKey(decryptedKeyBase64);
+              symmetricKeys.set(message.senderId, aesKey);
+              console.log('AES key received and stored');
+              // Показать в чате уведомление о ключе
+              const keyMsg = { id: message.id, senderId: message.senderId, type: 'key', content: '🔑 Ключ шифрования установлен', timestamp: message.timestamp };
+              if (currentConvId === convId) {
+                currentMessages.push(keyMsg);
+                appendMessage(keyMsg, keyMsg.senderId === currentUser.id);
+              }
+            } catch(e) { console.error('Failed to decrypt key', e); }
+          })();
         }
         return;
       }
-      // Обычное зашифрованное сообщение или файл
-      if (message.type === 'text' && message.content.startsWith('🔒')) {
-        const otherId = convId.split('_').find(id => id !== currentUser.id);
-        const aesKey = symmetricKeys.get(otherId);
-        if (aesKey) {
-          try {
-            const encryptedData = message.content.slice(1);
-            const parts = encryptedData.split('.'); // iv.ciphertext
-            if (parts.length === 2) {
-              const plainBytes = await aesDecrypt(aesKey, parts[0], parts[1]);
-              const plainText = new TextDecoder().decode(plainBytes);
-              message.content = plainText;
-            } else {
-              console.warn('Invalid encrypted message format');
-            }
-          } catch(e) { console.error('Decryption error', e); }
-        } else {
-          console.warn('No symmetric key for this conversation, cannot decrypt');
-        }
-      } else if (message.type === 'file') {
-        // Аналогично расшифровка файла (если зашифрован)
-        // Для простоты файлы пока не шифруем, но можно добавить по аналогии
-      }
+      // Обычное сообщение
       if (currentConvId === convId) {
         currentMessages.push(message);
         appendMessage(message, message.senderId === currentUser.id);
       }
       if (currentConvId !== convId && message.senderId !== currentUser.id) {
         const sender = usersCache[message.senderId] || { displayName: 'Кто-то' };
-        showNotification(`Новое сообщение от ${sender.displayName}`, message.type === 'text' ? message.content : '📎 Файл');
+        showNotification(`Новое сообщение от ${sender.displayName}`, message.type === 'text' ? (message.content.startsWith('🔒') ? '🔒 Зашифрованное сообщение' : message.content) : '📎 Файл');
       }
       loadConversations();
     });
@@ -461,6 +445,7 @@
       if (conv.lastMessage) {
         if (conv.lastMessage.type === 'file') lastMsgText = '📎 Файл';
         else if (conv.lastMessage.type === 'key') lastMsgText = '🔑 Ключ шифрования';
+        else if (conv.lastMessage.content.startsWith('🔒')) lastMsgText = '🔒 Зашифрованное сообщение';
         else lastMsgText = conv.lastMessage.content;
       }
       div.innerHTML = '<img class="conv-avatar" src="' + (conv.avatar || '') + '">' +
@@ -482,11 +467,17 @@
     if (conv.type === 'private') {
       const otherId = conv.id.split('_').find(id => id !== currentUser.id);
       updateUserStatusIndicator(otherId);
-      // Если симметричного ключа ещё нет, генерируем и отправляем
+      // Если ещё нет симметричного ключа, генерируем и отправляем
       if (!symmetricKeys.has(otherId)) {
-        const aesKey = await generateAESKey();
-        symmetricKeys.set(otherId, aesKey);
-        await sendSymmetricKey(otherId, aesKey);
+        const publicKeyPem = await getUserPublicKey(otherId);
+        if (publicKeyPem) {
+          const aesKey = await generateAESKey();
+          const exportedKey = await exportAESKey(aesKey);
+          const encryptedKey = await encryptWithRSA(exportedKey, publicKeyPem);
+          socket.emit('send-message', { convId: conv.id, type: 'key', content: encryptedKey });
+          symmetricKeys.set(otherId, aesKey);
+          console.log('AES key generated and sent');
+        }
       }
     } else {
       document.getElementById('chatUserStatus').innerText = '';
@@ -501,7 +492,7 @@
     });
     await refreshMembersPanel();
   }
-  // ==================== ПРОДОЛЖЕНИЕ SKYULTIMATE: ОСТАЛЬНЫЕ ФУНКЦИИ ====================
+
   async function refreshMembersPanel() {
     if (!currentConvId) return;
     if (currentConvType === 'group') {
@@ -669,7 +660,25 @@
     const senderHtml = `<div class="message-sender" onclick="showUserProfile('${msg.senderId}')">${isOwn ? 'Вы' : escapeHtml(sender.displayName)}</div>`;
     let contentHtml = '';
     if (msg.type === 'text') {
-      contentHtml = `<div class="message-text" id="msg-${msg.id}">${escapeHtml(msg.content)}</div>`;
+      let displayText = msg.content;
+      const isEncrypted = typeof displayText === 'string' && displayText.startsWith('🔒');
+      if (isEncrypted) {
+        const parts = displayText.slice(1).split('.');
+        if (parts.length === 2 && symmetricKeys.has(msg.senderId)) {
+          const aesKey = symmetricKeys.get(msg.senderId);
+          (async () => {
+            try {
+              const plain = await aesDecrypt(aesKey, parts[0], parts[1]);
+              const textDiv = document.querySelector(`#msg-${msg.id} .message-text`);
+              if (textDiv) textDiv.innerText = plain;
+            } catch(e) { console.error('Decryption failed', e); }
+          })();
+          displayText = '🔒 Зашифрованное сообщение...';
+        } else {
+          displayText = '🔒 Не удалось расшифровать (нет ключа)';
+        }
+      }
+      contentHtml = `<div class="message-text" id="msg-${msg.id}">${escapeHtml(displayText)}</div>`;
     } else if (msg.type === 'file') {
       const file = msg.content;
       if (file.type.startsWith('image/')) {
@@ -715,7 +724,7 @@
         alert('Файл превышает 2 ГБ');
         return;
       }
-      // Пока файлы не шифруем, но можно добавить по аналогии с текстом
+      // Файлы пока не шифруем
       const reader = new FileReader();
       reader.onload = (e) => {
         const content = { name: file.name, type: file.type, size: file.size, data: e.target.result };
@@ -729,11 +738,11 @@
         const aesKey = symmetricKeys.get(otherId);
         if (aesKey) {
           try {
-            const encrypted = await aesEncrypt(aesKey, new TextEncoder().encode(text.trim()));
+            const encrypted = await aesEncrypt(aesKey, text.trim());
             finalContent = '🔒' + encrypted.iv + '.' + encrypted.ciphertext;
           } catch(e) { console.error('Encryption failed', e); }
         } else {
-          console.warn('No symmetric key yet, sending unencrypted');
+          console.warn('No AES key yet, sending unencrypted');
         }
       }
       socket.emit('send-message', { convId: currentConvId, type: 'text', content: finalContent });
@@ -774,7 +783,7 @@
     }
   }, 30000);
 
-  // ==================== ЗВОНКИ (WebRTC) ====================
+    // ==================== ЗВОНКИ (WebRTC) ====================
   async function startCall(targetUserId, callType, isAnswer = false, offer = null) {
     if (currentCall.active) return;
     console.log(`[Call] startCall target=${targetUserId}, type=${callType}, isAnswer=${isAnswer}`);
@@ -1123,4 +1132,3 @@
 </script>
 </body>
 </html>
-
