@@ -6,13 +6,7 @@
   <title>SkyMessage — шифрование SkyUltimate</title>
   <style>
     * { box-sizing: border-box; margin: 0; padding: 0; }
-    body {
-      font-family: system-ui, -apple-system, 'Segoe UI', Roboto, sans-serif;
-      background: #0a0a0f;
-      color: #eef;
-      height: 100vh;
-      overflow: hidden;
-    }
+    body { font-family: system-ui, -apple-system, 'Segoe UI', Roboto, sans-serif; background: #0a0a0f; color: #eef; height: 100vh; overflow: hidden; }
     #app { display: flex; height: 100vh; }
     .sidebar { width: 280px; background: #111114; border-right: 1px solid #222; display: flex; flex-direction: column; transition: left 0.2s; }
     .sidebar-header { padding: 16px; border-bottom: 1px solid #222; display: flex; justify-content: space-between; align-items: center; }
@@ -164,8 +158,8 @@
 
   // ==================== ШИФРОВАНИЕ SKYULTIMATE ====================
   const ENCRYPTION_URL = 'https://skyultimate.onrender.com';
-  let rsaKeyPair = null; // { publicKeyPem, privateKey }
-  let symmetricKeys = new Map(); // userId -> AES key
+  let rsaKeyPair = null;
+  let symmetricKeys = new Map();
 
   async function generateRSAKeys() {
     const key = await crypto.subtle.generateKey(
@@ -224,7 +218,7 @@
       const data = await res.json();
       return data.publicKey;
     } catch(e) {
-      console.warn(`No public key for ${userId}, cannot encrypt`);
+      console.warn(`No public key for ${userId}`);
       return null;
     }
   }
@@ -258,15 +252,23 @@
   }
 
   async function aesDecrypt(key, ivBase64, ciphertextBase64) {
-    const iv = Uint8Array.from(atob(ivBase64), c => c.charCodeAt(0));
-    const ciphertext = Uint8Array.from(atob(ciphertextBase64), c => c.charCodeAt(0));
-    const decrypted = await crypto.subtle.decrypt(
-      { name: "AES-GCM", iv: iv },
-      key,
-      ciphertext
-    );
-    return new TextDecoder().decode(decrypted);
+    try {
+      ivBase64 = ivBase64.trim().replace(/\s/g, '');
+      ciphertextBase64 = ciphertextBase64.trim().replace(/\s/g, '');
+      const iv = Uint8Array.from(atob(ivBase64), c => c.charCodeAt(0));
+      const ciphertext = Uint8Array.from(atob(ciphertextBase64), c => c.charCodeAt(0));
+      const decrypted = await crypto.subtle.decrypt(
+        { name: "AES-GCM", iv: iv },
+        key,
+        ciphertext
+      );
+      return new TextDecoder().decode(decrypted);
+    } catch (e) {
+      console.error('AES decryption error', e);
+      return null;
+    }
   }
+
     // ==================== ВСПОМОГАТЕЛЬНЫЕ ФУНКЦИИ ====================
   function showModal(id) { document.getElementById(id).style.display = 'flex'; }
   function hideModal(id) { document.getElementById(id).style.display = 'none'; }
@@ -292,7 +294,6 @@
     document.getElementById('editStatus').value = currentUser.status || '';
   }
 
-  // ==================== API ВЫЗОВЫ ====================
   async function login(login, password) {
     const res = await fetch('/login', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ login, password }) });
     if (!res.ok) { alert('Неверный логин или пароль'); return false; }
@@ -339,7 +340,6 @@
     }
   }
 
-  // ==================== SOCKET.IO ====================
   function connectSocket() {
     if (socket) socket.disconnect();
     socket = io({ auth: { token } });
@@ -353,8 +353,7 @@
               const decryptedKeyBase64 = await decryptWithRSA(message.content);
               const aesKey = await importAESKey(decryptedKeyBase64);
               symmetricKeys.set(message.senderId, aesKey);
-              console.log('AES key received and stored');
-              // Показать системное сообщение в чате
+              console.log('AES key received');
               if (currentConvId === convId) {
                 appendMessage({ id: Date.now(), senderId: message.senderId, type: 'text', content: '🔑 Ключ шифрования установлен', timestamp: Date.now() }, false);
               }
@@ -454,7 +453,6 @@
     if (conv.type === 'private') {
       const otherId = conv.id.split('_').find(id => id !== currentUser.id);
       updateUserStatusIndicator(otherId);
-      // Если нет симметричного ключа для этого пользователя, генерируем и отправляем
       if (!symmetricKeys.has(otherId)) {
         const publicKeyPem = await getUserPublicKey(otherId);
         if (publicKeyPem) {
@@ -463,7 +461,7 @@
           const encryptedKey = await encryptWithRSA(exportedKey, publicKeyPem);
           socket.emit('send-message', { convId: conv.id, type: 'key', content: encryptedKey });
           symmetricKeys.set(otherId, aesKey);
-          console.log('AES key generated and sent');
+          console.log('AES key sent');
         }
       }
     } else {
@@ -650,15 +648,23 @@
       let displayText = msg.content;
       const isEncrypted = typeof displayText === 'string' && displayText.startsWith('🔒');
       if (isEncrypted) {
-        const parts = displayText.slice(1).split('.');
+        const parts = displayText.slice(1).split('|');
         if (parts.length === 2 && symmetricKeys.has(msg.senderId)) {
           const aesKey = symmetricKeys.get(msg.senderId);
           (async () => {
             try {
               const plain = await aesDecrypt(aesKey, parts[0], parts[1]);
+              if (plain !== null) {
+                const textDiv = document.querySelector(`#msg-${msg.id} .message-text`);
+                if (textDiv) textDiv.innerText = plain;
+              } else {
+                throw new Error('Decryption returned null');
+              }
+            } catch(e) {
+              console.error('Decryption failed', e);
               const textDiv = document.querySelector(`#msg-${msg.id} .message-text`);
-              if (textDiv) textDiv.innerText = plain;
-            } catch(e) { console.error('Decryption failed', e); }
+              if (textDiv) textDiv.innerText = '🔒 Ошибка расшифровки';
+            }
           })();
           displayText = '🔒 Зашифрованное сообщение...';
         } else {
@@ -723,7 +729,7 @@
         if (aesKey) {
           try {
             const encrypted = await aesEncrypt(aesKey, text.trim());
-            finalContent = '🔒' + encrypted.iv + '.' + encrypted.ciphertext;
+            finalContent = '🔒' + encrypted.iv + '|' + encrypted.ciphertext;
           } catch(e) { console.error('Encryption failed', e); }
         } else {
           console.warn('No AES key yet, sending unencrypted');
@@ -734,7 +740,6 @@
     }
   }
 
-  // ==================== СТАТУСЫ И ИНДИКАТОРЫ ====================
   function updateUserStatusIndicator(userId) {
     const user = usersCache[userId];
     if (!user) return;
@@ -767,7 +772,6 @@
     }
   }, 30000);
 
-  // ==================== ЗВОНКИ (WebRTC) ====================
   async function startCall(targetUserId, callType, isAnswer = false, offer = null) {
     if (currentCall.active) return;
     console.log(`[Call] startCall target=${targetUserId}, type=${callType}, isAnswer=${isAnswer}`);
@@ -847,7 +851,6 @@
     document.getElementById(type === 'audio' ? 'toggleMicBtn' : 'toggleCamBtn').innerText = type === 'audio' ? (enabled ? '🎤 Выкл' : '🎤 Вкл') : (enabled ? '📷 Выкл' : '📷 Вкл');
   }
 
-  // ==================== UI ОБРАБОТЧИКИ ====================
   document.getElementById('sendBtn').onclick = () => sendMessage(document.getElementById('messageInput').value);
   document.getElementById('messageInput').addEventListener('keypress', (e) => { if (e.key === 'Enter') sendMessage(e.target.value); });
   document.getElementById('fileInput').onchange = (e) => { if (e.target.files[0]) sendMessage('', e.target.files[0]); e.target.value = ''; };
@@ -948,7 +951,6 @@
     }
   };
 
-  // ==================== ПОИСК ПОЛЬЗОВАТЕЛЕЙ ====================
   let searchTimeout;
   document.getElementById('searchUsersInput').addEventListener('input', async (e) => {
     clearTimeout(searchTimeout);
@@ -1037,7 +1039,6 @@
     }, 300);
   });
 
-  // ==================== МОБИЛЬНЫЙ РЕЖИМ ====================
   function setMobileByWidth() {
     if (window.innerWidth <= 768) {
       if (!document.body.classList.contains('mobile-mode')) {
@@ -1071,7 +1072,6 @@
     setMobileByWidth();
   };
 
-  // ==================== ПОКАЗ ПАРОЛЯ ====================
   document.querySelectorAll('.toggle-password').forEach(span => {
     span.addEventListener('click', function() {
       const targetId = this.dataset.target;
@@ -1086,14 +1086,12 @@
     });
   });
 
-  // ==================== АВТОРИЗАЦИЯ ====================
   document.getElementById('doLoginBtn').onclick = () => login(document.getElementById('loginLogin').value, document.getElementById('loginPassword').value);
   document.getElementById('toRegisterBtn').onclick = () => { hideModal('loginModal'); showModal('registerModal'); };
   document.getElementById('doRegisterBtn').onclick = () => register(document.getElementById('regLogin').value, document.getElementById('regPassword').value, document.getElementById('regDisplayName').value);
   document.getElementById('toLoginBtn').onclick = () => { hideModal('registerModal'); showModal('loginModal'); };
   document.getElementById('logoutBtn').onclick = () => { localStorage.removeItem('token'); token = null; if (socket) socket.disconnect(); currentUser = null; showModal('loginModal'); };
 
-  // ==================== ИНИЦИАЛИЗАЦИЯ ====================
   (async () => {
     if (token) {
       const user = await loadCurrentUser();
