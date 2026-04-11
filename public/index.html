@@ -162,12 +162,10 @@
   let channelsCache = {};
   let currentMessages = [];
 
-  // Хранилище симметричных ключей для приватных чатов (userId -> AES key)
-  let symmetricKeys = new Map();
-
   // ==================== ШИФРОВАНИЕ SKYULTIMATE ====================
   const ENCRYPTION_URL = 'https://skyultimate.onrender.com';
   let rsaKeyPair = null; // { publicKeyPem, privateKey }
+  let symmetricKeys = new Map(); // userId -> AES key
 
   async function generateRSAKeys() {
     const key = await crypto.subtle.generateKey(
@@ -231,7 +229,6 @@
     }
   }
 
-  // AES-256-GCM
   async function generateAESKey() {
     return await crypto.subtle.generateKey(
       { name: "AES-GCM", length: 256 },
@@ -270,8 +267,7 @@
     );
     return new TextDecoder().decode(decrypted);
   }
-
-  // ==================== ВСПОМОГАТЕЛЬНЫЕ ФУНКЦИИ ====================
+    // ==================== ВСПОМОГАТЕЛЬНЫЕ ФУНКЦИИ ====================
   function showModal(id) { document.getElementById(id).style.display = 'flex'; }
   function hideModal(id) { document.getElementById(id).style.display = 'none'; }
   function escapeHtml(str) { return String(str).replace(/[&<>]/g, function(m) { if(m==='&') return '&amp;'; if(m==='<') return '&lt;'; if(m==='>') return '&gt;'; return m; }); }
@@ -343,10 +339,6 @@
     }
   }
 
-  function getPrivateConversationId(user1, user2) {
-    return [user1, user2].sort().join('_');
-  }
-
   // ==================== SOCKET.IO ====================
   function connectSocket() {
     if (socket) socket.disconnect();
@@ -354,27 +346,23 @@
     socket.on('connect', () => console.log('Socket connected'));
     socket.on('conversations', (convs) => renderConversations(convs));
     socket.on('new-message', ({ convId, message }) => {
-      // Обработка ключа шифрования
       if (message.type === 'key') {
-        if (message.senderId !== currentUser.id && currentConvId === convId) {
+        if (message.senderId !== currentUser.id) {
           (async () => {
             try {
               const decryptedKeyBase64 = await decryptWithRSA(message.content);
               const aesKey = await importAESKey(decryptedKeyBase64);
               symmetricKeys.set(message.senderId, aesKey);
               console.log('AES key received and stored');
-              // Показать в чате уведомление о ключе
-              const keyMsg = { id: message.id, senderId: message.senderId, type: 'key', content: '🔑 Ключ шифрования установлен', timestamp: message.timestamp };
+              // Показать системное сообщение в чате
               if (currentConvId === convId) {
-                currentMessages.push(keyMsg);
-                appendMessage(keyMsg, keyMsg.senderId === currentUser.id);
+                appendMessage({ id: Date.now(), senderId: message.senderId, type: 'text', content: '🔑 Ключ шифрования установлен', timestamp: Date.now() }, false);
               }
             } catch(e) { console.error('Failed to decrypt key', e); }
           })();
         }
         return;
       }
-      // Обычное сообщение
       if (currentConvId === convId) {
         currentMessages.push(message);
         appendMessage(message, message.senderId === currentUser.id);
@@ -444,8 +432,7 @@
       let lastMsgText = '';
       if (conv.lastMessage) {
         if (conv.lastMessage.type === 'file') lastMsgText = '📎 Файл';
-        else if (conv.lastMessage.type === 'key') lastMsgText = '🔑 Ключ шифрования';
-        else if (conv.lastMessage.content.startsWith('🔒')) lastMsgText = '🔒 Зашифрованное сообщение';
+        else if (conv.lastMessage.content && conv.lastMessage.content.startsWith('🔒')) lastMsgText = '🔒 Зашифрованное сообщение';
         else lastMsgText = conv.lastMessage.content;
       }
       div.innerHTML = '<img class="conv-avatar" src="' + (conv.avatar || '') + '">' +
@@ -467,7 +454,7 @@
     if (conv.type === 'private') {
       const otherId = conv.id.split('_').find(id => id !== currentUser.id);
       updateUserStatusIndicator(otherId);
-      // Если ещё нет симметричного ключа, генерируем и отправляем
+      // Если нет симметричного ключа для этого пользователя, генерируем и отправляем
       if (!symmetricKeys.has(otherId)) {
         const publicKeyPem = await getUserPublicKey(otherId);
         if (publicKeyPem) {
@@ -686,8 +673,6 @@
       } else {
         contentHtml = `<div class="message-file" data-msgid="${msg.id}">📎 ${escapeHtml(file.name)} (${(file.size/1024/1024).toFixed(2)} MB)</div>`;
       }
-    } else if (msg.type === 'key') {
-      contentHtml = `<div class="message-text">🔑 Ключ шифрования установлен</div>`;
     }
     div.innerHTML = senderHtml + contentHtml + `<div class="message-time">${new Date(msg.timestamp).toLocaleTimeString()}</div>`;
     div.setAttribute('data-msgid', msg.id);
@@ -724,7 +709,6 @@
         alert('Файл превышает 2 ГБ');
         return;
       }
-      // Файлы пока не шифруем
       const reader = new FileReader();
       reader.onload = (e) => {
         const content = { name: file.name, type: file.type, size: file.size, data: e.target.result };
@@ -783,7 +767,7 @@
     }
   }, 30000);
 
-    // ==================== ЗВОНКИ (WebRTC) ====================
+  // ==================== ЗВОНКИ (WebRTC) ====================
   async function startCall(targetUserId, callType, isAnswer = false, offer = null) {
     if (currentCall.active) return;
     console.log(`[Call] startCall target=${targetUserId}, type=${callType}, isAnswer=${isAnswer}`);
@@ -916,7 +900,7 @@
     const usersList = await searchRes.json();
     const target = usersList.find(u => u.login === login);
     if (!target) { alert('Пользователь не найден'); return; }
-    const convId = getPrivateConversationId(currentUser.id, target.id);
+    const convId = [currentUser.id, target.id].sort().join('_');
     openConversation({ id: convId, type: 'private', name: target.displayName, avatar: target.avatar });
     hideModal('newChatModal');
   };
@@ -980,7 +964,7 @@
         div.className = 'search-user-item';
         div.innerHTML = `<img class="avatar" src="${u.avatar || ''}" style="width:24px;height:24px;"> ${escapeHtml(u.displayName)} (@${u.login})`;
         div.onclick = () => {
-          const convId = getPrivateConversationId(currentUser.id, u.id);
+          const convId = [currentUser.id, u.id].sort().join('_');
           openConversation({ id: convId, type: 'private', name: u.displayName, avatar: u.avatar });
           document.getElementById('searchUsersInput').value = '';
           container.style.display = 'none';
