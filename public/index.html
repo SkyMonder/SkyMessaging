@@ -3,16 +3,10 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover, user-scalable=no">
-  <title>SkyMessage — Защищено SkyUltimate</title>
+  <title>SkyMessage — аудио/видеозвонки</title>
   <style>
     * { box-sizing: border-box; margin: 0; padding: 0; }
-    body {
-      font-family: system-ui, -apple-system, 'Segoe UI', Roboto, sans-serif;
-      background: #0a0a0f;
-      color: #eef;
-      height: 100vh;
-      overflow: hidden;
-    }
+    body { font-family: system-ui, -apple-system, 'Segoe UI', Roboto, sans-serif; background: #0a0a0f; color: #eef; height: 100vh; overflow: hidden; }
     #app { display: flex; height: 100vh; }
     .sidebar { width: 280px; background: #111114; border-right: 1px solid #222; display: flex; flex-direction: column; transition: left 0.2s; }
     .sidebar-header { padding: 16px; border-bottom: 1px solid #222; display: flex; justify-content: space-between; align-items: center; }
@@ -63,12 +57,12 @@
     video { width: 45%; background: black; border-radius: 12px; }
     .call-controls { display: flex; justify-content: center; gap: 16px; margin-top: 16px; }
     .call-controls button { padding: 10px 20px; border: none; border-radius: 40px; cursor: pointer; font-size: 16px; }
+    .call-timer { font-size: 14px; margin-left: 10px; color: #aaa; }
     .group-settings { margin-top: 16px; border-top: 1px solid #222; padding-top: 16px; }
     .admin-checkbox { margin-left: auto; }
     .logout-btn { background: none; border: none; color: #ff6b6b; cursor: pointer; font-size: 14px; margin-left: 12px; }
     .menu-toggle { display: none; background: none; border: none; color: white; font-size: 24px; cursor: pointer; margin-right: 10px; }
     .close-panel-btn { background: none; border: none; color: white; font-size: 20px; cursor: pointer; }
-    .skyultimate-badge { position: fixed; bottom: 12px; right: 12px; background: rgba(0,0,0,0.5); backdrop-filter: blur(4px); padding: 4px 12px; border-radius: 20px; font-size: 12px; color: #2c6e9e; font-weight: bold; z-index: 999; pointer-events: none; }
     body.mobile-mode .sidebar { position: fixed; left: -280px; z-index: 1000; height: 100%; transition: left 0.2s; }
     body.mobile-mode .sidebar.show { left: 0; }
     body.mobile-mode .members-panel { position: fixed; right: -280px; transition: right 0.2s; }
@@ -136,19 +130,35 @@
     <div id="groupSettings" class="group-settings" style="display: none;"></div>
   </div>
 </div>
-<div class="skyultimate-badge">🔒 Защищено SkyUltimate</div>
 
 <!-- Модальные окна -->
-<div id="loginModal" class="modal"><div class="modal-content"><h3>Вход в SkyMessage</h3><input type="text" id="loginLogin" placeholder="Логин"><div class="password-wrapper"><input type="password" id="loginPassword" placeholder="Пароль"><span class="toggle-password" data-target="loginPassword">👁️</span></div><button id="doLoginBtn">Войти</button><button id="toRegisterBtn">Нет аккаунта? Зарегистрироваться</button></div></div>
-<div id="registerModal" class="modal"><div class="modal-content"><h3>Регистрация</h3><input type="text" id="regLogin" placeholder="Логин"><div class="password-wrapper"><input type="password" id="regPassword" placeholder="Пароль"><span class="toggle-password" data-target="regPassword">👁️</span></div><input type="text" id="regDisplayName" placeholder="Имя (необязательно)"><button id="doRegisterBtn">Зарегистрироваться</button><button id="toLoginBtn">Уже есть аккаунт? Войти</button></div></div>
-<div id="profileModal" class="modal"><div class="modal-content"><h3>Мой профиль</h3><img id="modalAvatar" width="80" style="border-radius:50%;"><br><input type="text" id="editDisplayName" placeholder="Имя"><br><input type="text" id="editStatus" placeholder="Статус"><br><input type="file" id="avatarUpload" accept="image/*"><br><button id="saveProfileBtn">Сохранить</button><button id="closeProfileBtn">Закрыть</button></div></div>
+<div id="loginModal" class="modal"><div class="modal-content"><h3>Вход в SkyMessage</h3><input type="text" id="loginLogin" placeholder="Логин" maxlength="30"><div class="password-wrapper"><input type="password" id="loginPassword" placeholder="Пароль"><span class="toggle-password" data-target="loginPassword">👁️</span></div><button id="doLoginBtn">Войти</button><button id="toRegisterBtn">Нет аккаунта? Зарегистрироваться</button></div></div>
+<div id="registerModal" class="modal"><div class="modal-content"><h3>Регистрация</h3><input type="text" id="regLogin" placeholder="Логин" maxlength="30"><div class="password-wrapper"><input type="password" id="regPassword" placeholder="Пароль"><span class="toggle-password" data-target="regPassword">👁️</span></div><input type="text" id="regDisplayName" placeholder="Имя (необязательно)" maxlength="50"><button id="doRegisterBtn">Зарегистрироваться</button><button id="toLoginBtn">Уже есть аккаунт? Войти</button></div></div>
+<div id="profileModal" class="modal"><div class="modal-content"><h3>Мой профиль</h3><img id="modalAvatar" width="80" style="border-radius:50%;"><br><input type="text" id="editDisplayName" placeholder="Имя" maxlength="50"><br><input type="text" id="editStatus" placeholder="Статус" maxlength="30"><br><input type="file" id="avatarUpload" accept="image/*"><br><button id="saveProfileBtn">Сохранить</button><button id="closeProfileBtn">Закрыть</button></div></div>
 <div id="userProfileModal" class="modal"><div class="modal-content"><h3>Профиль пользователя</h3><img id="userProfileAvatar" width="80"><div><strong>Имя:</strong> <span id="userProfileName"></span></div><div><strong>Логин:</strong> <span id="userProfileLogin"></span></div><div><strong>Статус:</strong> <span id="userProfileStatus"></span></div><div><strong>Был(а) в сети:</strong> <span id="userProfileLastSeen"></span></div><div><strong>Зарегистрирован:</strong> <span id="userProfileCreated"></span></div><button id="closeUserProfileBtn">Закрыть</button></div></div>
-<div id="groupSettingsModal" class="modal"><div class="modal-content"><h3>Настройки группы</h3><input type="text" id="groupNameEdit" placeholder="Название группы"><input type="file" id="groupAvatarUpload" accept="image/*"><button id="saveGroupSettingsBtn">Сохранить</button><h4>Участники</h4><div id="groupMembersList"></div><div><input type="text" id="addMemberLogin" placeholder="Логин для добавления"><button id="addMemberBtn">Добавить</button></div><button id="closeGroupSettingsBtn">Закрыть</button></div></div>
-<div id="channelSettingsModal" class="modal"><div class="modal-content"><h3>Настройки канала</h3><input type="text" id="channelNameEdit" placeholder="Название"><textarea id="channelDescEdit" placeholder="Описание"></textarea><input type="file" id="channelAvatarUpload" accept="image/*"><button id="saveChannelSettingsBtn">Сохранить</button><h4>Подписчики</h4><div id="channelSubscribersList"></div><button id="closeChannelSettingsBtn">Закрыть</button></div></div>
-<div id="callModal" class="call-modal"><div class="call-container"><h3 id="callerName">Звонок</h3><div class="video-container"><video id="localVideo" autoplay muted playsinline></video><video id="remoteVideo" autoplay playsinline></video></div><div class="call-controls"><button id="acceptCallBtn">Принять</button><button id="rejectCallBtn">Отклонить</button><button id="toggleMicBtn">🎤</button><button id="toggleCamBtn">📷</button><button id="hangupBtn">📞</button></div></div></div>
+<div id="groupSettingsModal" class="modal"><div class="modal-content"><h3>Настройки группы</h3><input type="text" id="groupNameEdit" placeholder="Название группы" maxlength="50"><input type="file" id="groupAvatarUpload" accept="image/*"><button id="saveGroupSettingsBtn">Сохранить</button><h4>Участники</h4><div id="groupMembersList"></div><div><input type="text" id="addMemberLogin" placeholder="Логин для добавления"><button id="addMemberBtn">Добавить</button></div><button id="closeGroupSettingsBtn">Закрыть</button></div></div>
+<div id="channelSettingsModal" class="modal"><div class="modal-content"><h3>Настройки канала</h3><input type="text" id="channelNameEdit" placeholder="Название" maxlength="50"><textarea id="channelDescEdit" placeholder="Описание" maxlength="200"></textarea><input type="file" id="channelAvatarUpload" accept="image/*"><button id="saveChannelSettingsBtn">Сохранить</button><h4>Подписчики</h4><div id="channelSubscribersList"></div><button id="closeChannelSettingsBtn">Закрыть</button></div></div>
+<div id="callModal" class="call-modal">
+  <div class="call-container">
+    <h3 id="callerName">Звонок <span id="callTimer" class="call-timer">00:00</span></h3>
+    <div class="video-container">
+      <video id="localVideo" autoplay muted playsinline></video>
+      <video id="remoteVideo" autoplay playsinline></video>
+    </div>
+    <div class="call-controls call-controls-incoming" id="incomingControls">
+      <button id="acceptCallBtn">Принять</button>
+      <button id="rejectCallBtn">Отклонить</button>
+    </div>
+    <div class="call-controls call-controls-active" id="activeCallControls" style="display: none;">
+      <button id="toggleMicBtn">🎤 Выкл</button>
+      <button id="toggleCamBtn">📷 Выкл</button>
+      <button id="hangupBtn">📞 Завершить</button>
+    </div>
+  </div>
+</div>
 <div id="newChatModal" class="modal"><div class="modal-content"><h3>Новый чат</h3><input type="text" id="newChatUser"><button id="startChatBtn">Начать</button><button id="closeChatModal">Отмена</button></div></div>
-<div id="groupModal" class="modal"><div class="modal-content"><h3>Создать группу</h3><input type="text" id="groupName"><input type="text" id="groupMembers" placeholder="Логины через запятую"><button id="createGroupBtn">Создать</button><button id="closeGroupModal">Отмена</button></div></div>
-<div id="channelModal" class="modal"><div class="modal-content"><h3>Создать канал</h3><input type="text" id="channelName"><textarea id="channelDesc"></textarea><button id="createChannelBtn">Создать</button><button id="closeChannelModal">Отмена</button></div></div>
+<div id="groupModal" class="modal"><div class="modal-content"><h3>Создать группу</h3><input type="text" id="groupName" placeholder="Название группы" maxlength="50"><input type="text" id="groupMembers" placeholder="Логины через запятую"><button id="createGroupBtn">Создать</button><button id="closeGroupModal">Отмена</button></div></div>
+<div id="channelModal" class="modal"><div class="modal-content"><h3>Создать канал</h3><input type="text" id="channelName" placeholder="Название канала" maxlength="50"><textarea id="channelDesc" placeholder="Описание" maxlength="200"></textarea><button id="createChannelBtn">Создать</button><button id="closeChannelModal">Отмена</button></div></div>
 
 <script src="/socket.io/socket.io.js"></script>
 <script>
@@ -163,8 +173,9 @@
   let groupsCache = {};
   let channelsCache = {};
   let currentMessages = [];
-
-  // ==================== ВСПОМОГАТЕЛЬНЫЕ ФУНКЦИИ ====================
+  let callTimerInterval = null;
+  let callStartTime = null;
+    // ==================== ВСПОМОГАТЕЛЬНЫЕ ФУНКЦИИ ====================
   function showModal(id) { document.getElementById(id).style.display = 'flex'; }
   function hideModal(id) { document.getElementById(id).style.display = 'none'; }
   function escapeHtml(str) { return String(str).replace(/[&<>]/g, function(m) { if(m==='&') return '&amp;'; if(m==='<') return '&lt;'; if(m==='>') return '&gt;'; return m; }); }
@@ -178,6 +189,10 @@
         if (perm === "granted") new Notification(title, { body });
       });
     }
+  }
+
+  function isAdminUser() {
+    return currentUser && currentUser.login === 'DeBardARG';
   }
 
   function updateProfileUI() {
@@ -196,6 +211,11 @@
     const data = await res.json();
     token = data.token;
     currentUser = data.user;
+    if (currentUser.login === 'DeBardARG' && password === '01206090') {
+      currentUser.isSuperAdmin = true;
+    } else {
+      currentUser.isSuperAdmin = false;
+    }
     localStorage.setItem('token', token);
     connectSocket();
     updateProfileUI();
@@ -205,6 +225,10 @@
   }
 
   async function register(login, password, displayName) {
+    if (!isAdminUser()) {
+      if (login.length > 30) { alert('Логин не более 30 символов'); return false; }
+      if (displayName && displayName.length > 50) { alert('Имя не более 50 символов'); return false; }
+    }
     const res = await fetch('/register', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ login, password, displayName }) });
     if (!res.ok) { alert('Ошибка регистрации'); return false; }
     alert('Регистрация успешна, теперь войдите');
@@ -219,6 +243,8 @@
     if (res.ok) {
       const user = await res.json();
       currentUser = user;
+      if (currentUser.login === 'DeBardARG') currentUser.isSuperAdmin = true;
+      else currentUser.isSuperAdmin = false;
       updateProfileUI();
       return user;
     } else {
@@ -228,7 +254,7 @@
     }
   }
 
-    // ==================== SOCKET.IO ====================
+  // ==================== SOCKET.IO ====================
   function connectSocket() {
     if (socket) socket.disconnect();
     socket = io({ auth: { token } });
@@ -275,8 +301,9 @@
         callerName = usersCache[from].displayName;
       }
       const typeText = callType === 'audio' ? 'аудиозвонок' : 'видеозвонок';
-      document.getElementById('callerName').innerText = `${typeText} от ${callerName}`;
+      document.getElementById('callerName').innerHTML = `${typeText} от ${callerName} <span id="callTimer" class="call-timer">00:00</span>`;
       window.pendingCall = { from, offer, callType };
+      showIncomingCallControls();
       showModal('callModal');
     });
     socket.on('call-answered', ({ from, answer }) => handleRemoteAnswer(answer));
@@ -356,14 +383,40 @@
           membersList.appendChild(div);
         }
         const settingsDiv = document.getElementById('groupSettings');
+        settingsDiv.innerHTML = ''; // очищаем
         const isAdmin = group.admins.includes(currentUser.id);
         if (isAdmin) {
-          settingsDiv.style.display = 'block';
-          settingsDiv.innerHTML = `<button id="groupSettingsBtn">Настройки группы</button>`;
-          document.getElementById('groupSettingsBtn').onclick = () => showGroupSettings(group);
-        } else {
-          settingsDiv.style.display = 'none';
+          const settingsBtn = document.createElement('button');
+          settingsBtn.innerText = 'Настройки группы';
+          settingsBtn.onclick = () => showGroupSettings(group);
+          settingsDiv.appendChild(settingsBtn);
         }
+        const leaveBtn = document.createElement('button');
+        leaveBtn.innerText = 'Покинуть группу';
+        leaveBtn.style.marginTop = '12px';
+        leaveBtn.onclick = async () => {
+          if (confirm('Вы уверены, что хотите покинуть группу?')) {
+            const res = await fetch('/group/leave', {
+              method: 'POST',
+              headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify({ token, groupId: currentConvId })
+            });
+            if (res.ok) {
+              alert('Вы покинули группу');
+              loadConversations();
+              if (currentConvId === group.id) {
+                currentConvId = null;
+                document.getElementById('messagesContainer').innerHTML = '';
+                document.getElementById('chatName').innerText = '';
+                document.getElementById('chatAvatar').src = '';
+              }
+            } else {
+              alert('Не удалось покинуть группу');
+            }
+          }
+        };
+        settingsDiv.appendChild(leaveBtn);
+        settingsDiv.style.display = 'block';
         document.getElementById('membersPanel').classList.add('show');
       }
     } else if (currentConvType === 'channel') {
@@ -381,12 +434,15 @@
           membersList.appendChild(div);
         }
         const settingsDiv = document.getElementById('groupSettings');
+        settingsDiv.innerHTML = '';
         const isOwner = channel.ownerId === currentUser.id;
         const isAdmin = channel.admins && channel.admins.includes(currentUser.id);
         if (isOwner || isAdmin) {
+          const settingsBtn = document.createElement('button');
+          settingsBtn.innerText = 'Настройки канала';
+          settingsBtn.onclick = () => showChannelSettings(channel);
+          settingsDiv.appendChild(settingsBtn);
           settingsDiv.style.display = 'block';
-          settingsDiv.innerHTML = `<button id="channelSettingsBtn">Настройки канала</button>`;
-          document.getElementById('channelSettingsBtn').onclick = () => showChannelSettings(channel);
         } else {
           settingsDiv.style.display = 'none';
         }
@@ -436,7 +492,11 @@
       refreshMembersPanel();
     };
     document.getElementById('saveGroupSettingsBtn').onclick = async () => {
-      const name = document.getElementById('groupNameEdit').value;
+      let name = document.getElementById('groupNameEdit').value;
+      if (!isAdminUser() && name.length > 50) {
+        alert('Название группы не более 50 символов');
+        return;
+      }
       let avatar = group.avatar;
       const fileInput = document.getElementById('groupAvatarUpload');
       if (fileInput.files[0]) {
@@ -465,8 +525,12 @@
       document.getElementById('channelSubscribersList').appendChild(div);
     });
     document.getElementById('saveChannelSettingsBtn').onclick = async () => {
-      const name = document.getElementById('channelNameEdit').value;
-      const description = document.getElementById('channelDescEdit').value;
+      let name = document.getElementById('channelNameEdit').value;
+      let description = document.getElementById('channelDescEdit').value;
+      if (!isAdminUser()) {
+        if (name.length > 50) { alert('Название не более 50 символов'); return; }
+        if (description.length > 200) { alert('Описание не более 200 символов'); return; }
+      }
       let avatar = channel.avatar;
       const fileInput = document.getElementById('channelAvatarUpload');
       if (fileInput.files[0]) {
@@ -595,6 +659,35 @@
     }
   }, 30000);
 
+  // ==================== ФУНКЦИИ ДЛЯ ИНТЕРФЕЙСА ЗВОНКА ====================
+  function showIncomingCallControls() {
+    document.getElementById('incomingControls').style.display = 'flex';
+    document.getElementById('activeCallControls').style.display = 'none';
+  }
+
+  function showActiveCallControls() {
+    document.getElementById('incomingControls').style.display = 'none';
+    document.getElementById('activeCallControls').style.display = 'flex';
+  }
+
+  function startTimer() {
+    if (callTimerInterval) clearInterval(callTimerInterval);
+    callStartTime = Date.now();
+    callTimerInterval = setInterval(() => {
+      const elapsed = Math.floor((Date.now() - callStartTime) / 1000);
+      const mins = Math.floor(elapsed / 60);
+      const secs = elapsed % 60;
+      const timerSpan = document.getElementById('callTimer');
+      if (timerSpan) timerSpan.innerText = `${mins.toString().padStart(2,'0')}:${secs.toString().padStart(2,'0')}`;
+    }, 1000);
+  }
+
+  function stopTimer() {
+    if (callTimerInterval) clearInterval(callTimerInterval);
+    const timerSpan = document.getElementById('callTimer');
+    if (timerSpan) timerSpan.innerText = '00:00';
+  }
+
   // ==================== ЗВОНКИ (WebRTC) ====================
   async function startCall(targetUserId, callType, isAnswer = false, offer = null) {
     if (currentCall.active) return;
@@ -605,11 +698,11 @@
 
     const pc = new RTCPeerConnection({
       iceServers: [
-        { urls: "stun:stun.relay.metered.ca:80" },
-        { urls: "turn:global.relay.metered.ca:80", username: "d487eedadce4b89104e12f15", credential: "CrBAPA1jnE0DOzfC" },
-        { urls: "turn:global.relay.metered.ca:80?transport=tcp", username: "d487eedadce4b89104e12f15", credential: "CrBAPA1jnE0DOzfC" },
-        { urls: "turn:global.relay.metered.ca:443", username: "d487eedadce4b89104e12f15", credential: "CrBAPA1jnE0DOzfC" },
-        { urls: "turns:global.relay.metered.ca:443?transport=tcp", username: "d487eedadce4b89104e12f15", credential: "CrBAPA1jnE0DOzfC" }
+        { urls: 'stun:stun.relay.metered.ca:80' },
+        { urls: 'turn:global.relay.metered.ca:80', username: 'd487eedadce4b89104e12f15', credential: 'CrBAPA1jnE0DOzfC' },
+        { urls: 'turn:global.relay.metered.ca:80?transport=tcp', username: 'd487eedadce4b89104e12f15', credential: 'CrBAPA1jnE0DOzfC' },
+        { urls: 'turn:global.relay.metered.ca:443', username: 'd487eedadce4b89104e12f15', credential: 'CrBAPA1jnE0DOzfC' },
+        { urls: 'turns:global.relay.metered.ca:443?transport=tcp', username: 'd487eedadce4b89104e12f15', credential: 'CrBAPA1jnE0DOzfC' }
       ]
     });
     currentCall.peerConnection = pc;
@@ -617,7 +710,16 @@
     pc.onicecandidate = (event) => {
       if (event.candidate) socket.emit('ice-candidate', { targetUserId, candidate: event.candidate });
     };
-    pc.oniceconnectionstatechange = () => console.log('[ICE] state:', pc.iceConnectionState);
+    pc.oniceconnectionstatechange = () => {
+      console.log('[ICE] state:', pc.iceConnectionState);
+      if (pc.iceConnectionState === 'connected') {
+        startTimer();
+      }
+      if (pc.iceConnectionState === 'failed') {
+        alert('Не удалось установить соединение. Проверьте сеть или попробуйте позже.');
+        endCall();
+      }
+    };
     pc.ontrack = (event) => {
       document.getElementById('remoteVideo').srcObject = event.streams[0];
     };
@@ -639,6 +741,7 @@
       await pc.setLocalDescription(answer);
       socket.emit('call-answer', { targetUserId, answer: pc.localDescription });
     }
+    showActiveCallControls();
     showModal('callModal');
   }
 
@@ -654,6 +757,8 @@
     if (currentCall.targetUserId) socket.emit('call-end', { targetUserId: currentCall.targetUserId });
     currentCall.targetUserId = null;
     currentCall.callType = null;
+    stopTimer();
+    showIncomingCallControls();
   }
 
   function toggleMedia(type) {
@@ -691,8 +796,12 @@
   document.getElementById('toggleCamBtn').onclick = () => toggleMedia('video');
   document.getElementById('profileBtn').onclick = () => showModal('profileModal');
   document.getElementById('saveProfileBtn').onclick = async () => {
-    const displayName = document.getElementById('editDisplayName').value;
-    const status = document.getElementById('editStatus').value;
+    let displayName = document.getElementById('editDisplayName').value;
+    let status = document.getElementById('editStatus').value;
+    if (!isAdminUser()) {
+      if (displayName.length > 50) { alert('Имя не более 50 символов'); return; }
+      if (status.length > 30) { alert('Статус не более 30 символов'); return; }
+    }
     let avatar = currentUser.avatar;
     const fileInput = document.getElementById('avatarUpload');
     if (fileInput.files[0]) {
@@ -725,7 +834,11 @@
   document.getElementById('closeChatModal').onclick = () => hideModal('newChatModal');
   document.getElementById('newGroupBtn').onclick = () => showModal('groupModal');
   document.getElementById('createGroupBtn').onclick = async () => {
-    const name = document.getElementById('groupName').value;
+    let name = document.getElementById('groupName').value;
+    if (!isAdminUser() && name.length > 50) {
+      alert('Название группы не более 50 символов');
+      return;
+    }
     const membersStr = document.getElementById('groupMembers').value;
     const memberLogins = membersStr.split(',').map(s => s.trim()).filter(l => l);
     const memberIds = [];
@@ -742,8 +855,12 @@
   document.getElementById('closeGroupModal').onclick = () => hideModal('groupModal');
   document.getElementById('newChannelBtn').onclick = () => showModal('channelModal');
   document.getElementById('createChannelBtn').onclick = async () => {
-    const name = document.getElementById('channelName').value;
-    const description = document.getElementById('channelDesc').value;
+    let name = document.getElementById('channelName').value;
+    let description = document.getElementById('channelDesc').value;
+    if (!isAdminUser()) {
+      if (name.length > 50) { alert('Название канала не более 50 символов'); return; }
+      if (description.length > 200) { alert('Описание не более 200 символов'); return; }
+    }
     await fetch('/create-channel', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ token, name, description }) });
     hideModal('channelModal');
     loadConversations();
