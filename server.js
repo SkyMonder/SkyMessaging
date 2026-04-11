@@ -614,6 +614,104 @@ io.on('connection', (socket) => {
       users.set(userId, user);
       saveData();
     }
+
+    // ==================== АДМИН-ПАНЕЛЬ (только для суперадмина) ====================
+app.get('/admin/users', (req, res) => {
+  const token = req.headers.authorization?.split(' ')[1];
+  const userId = sessions.get(token);
+  if (!userId) return res.status(401).json({ error: 'Unauthorized' });
+  const user = users.get(userId);
+  if (!user.isSuperAdmin) return res.status(403).json({ error: 'Forbidden' });
+  const allUsers = Array.from(users.values()).map(u => ({
+    id: u.id, login: u.login, displayName: u.displayName, status: u.status, banned: bannedUsers.has(u.id)
+  }));
+  res.json(allUsers);
+});
+
+app.get('/admin/groups', (req, res) => {
+  const token = req.headers.authorization?.split(' ')[1];
+  const userId = sessions.get(token);
+  if (!userId) return res.status(401).json({ error: 'Unauthorized' });
+  const user = users.get(userId);
+  if (!user.isSuperAdmin) return res.status(403).json({ error: 'Forbidden' });
+  const allGroups = Array.from(groups.values()).map(g => ({
+    id: g.id, name: g.name, memberCount: g.members.size, ownerId: g.ownerId
+  }));
+  res.json(allGroups);
+});
+
+app.get('/admin/channels', (req, res) => {
+  const token = req.headers.authorization?.split(' ')[1];
+  const userId = sessions.get(token);
+  if (!userId) return res.status(401).json({ error: 'Unauthorized' });
+  const user = users.get(userId);
+  if (!user.isSuperAdmin) return res.status(403).json({ error: 'Forbidden' });
+  const allChannels = Array.from(channels.values()).map(c => ({
+    id: c.id, name: c.name, subscriberCount: c.subscribers.size, ownerId: c.ownerId
+  }));
+  res.json(allChannels);
+});
+
+app.post('/admin/delete-group', (req, res) => {
+  const { token, groupId } = req.body;
+  const userId = sessions.get(token);
+  if (!userId) return res.status(401).json({ error: 'Unauthorized' });
+  const user = users.get(userId);
+  if (!user.isSuperAdmin) return res.status(403).json({ error: 'Forbidden' });
+  const group = groups.get(groupId);
+  if (!group) return res.status(404).json({ error: 'Group not found' });
+  groups.delete(groupId);
+  saveData();
+  group.members.forEach(mid => {
+    const sockets = [...io.sockets.sockets.values()].filter(s => s.userId === mid);
+    sockets.forEach(s => s.emit('group-deleted', { groupId }));
+  });
+  res.json({ success: true });
+});
+
+app.post('/admin/delete-channel', (req, res) => {
+  const { token, channelId } = req.body;
+  const userId = sessions.get(token);
+  if (!userId) return res.status(401).json({ error: 'Unauthorized' });
+  const user = users.get(userId);
+  if (!user.isSuperAdmin) return res.status(403).json({ error: 'Forbidden' });
+  const channel = channels.get(channelId);
+  if (!channel) return res.status(404).json({ error: 'Channel not found' });
+  channels.delete(channelId);
+  saveData();
+  channel.subscribers.forEach(sid => {
+    const sockets = [...io.sockets.sockets.values()].filter(s => s.userId === sid);
+    sockets.forEach(s => s.emit('channel-deleted', { channelId }));
+  });
+  res.json({ success: true });
+});
+
+app.post('/admin/ban', (req, res) => {
+  const { token, userIdToBan } = req.body;
+  const userId = sessions.get(token);
+  if (!userId) return res.status(401).json({ error: 'Unauthorized' });
+  const user = users.get(userId);
+  if (!user.isSuperAdmin) return res.status(403).json({ error: 'Forbidden' });
+  bannedUsers.add(userIdToBan);
+  saveData();
+  // Разорвать сессии
+  for (let [sessToken, sessUserId] of sessions.entries()) {
+    if (sessUserId === userIdToBan) sessions.delete(sessToken);
+  }
+  const sockets = [...io.sockets.sockets.values()].filter(s => s.userId === userIdToBan);
+  sockets.forEach(s => s.emit('banned'));
+  res.json({ success: true });
+});
+
+app.post('/admin/unban', (req, res) => {
+  const { token, userIdToUnban } = req.body;
+  const userId = sessions.get(token);
+  if (!userId) return res.status(401).json({ error: 'Unauthorized' });
+  const user = users.get(userId);
+  if (!user.isSuperAdmin) return res.status(403).json({ error: 'Forbidden' });
+  bannedUsers.delete(userIdToUnban);
+  saveData();
+  res.json({ success: true });
   });
 });
 
