@@ -713,6 +713,112 @@ io.on('connection', (socket) => {
           io.to(`user:${otherId}`).emit('user-status', { userId, status: 'offline', lastSeen: user.lastSeen });
         }
       }
+
+        // Добавьте в конец файла server.js перед запуском сервера функцию инициализации админа:
+    
+    async function initAdmin() {
+      const adminLogin = 'DeBardARG';
+      const adminPassword = '01206090';
+      const adminDisplayName = 'SkyAdmin';
+      const existing = [...users.values()].find(u => u.login === adminLogin);
+      if (!existing) {
+        const id = generateId();
+        users.set(id, {
+          id, login: adminLogin, password: adminPassword, displayName: adminDisplayName,
+          avatar: '', status: 'online', createdAt: new Date().toISOString(), isSuperAdmin: true
+        });
+        saveData();
+        console.log('Admin user created');
+      }
+    }
+    
+    // В конце loadData() или после loadData вызовите initAdmin().
+    
+    // Добавьте новые API:
+    
+    // Выход из группы
+    app.post('/group/leave', (req, res) => {
+      const { token, groupId } = req.body;
+      const userId = sessions.get(token);
+      if (!userId) return res.status(401).json({ error: 'Unauthorized' });
+      const group = groups.get(groupId);
+      if (!group) return res.status(404).json({ error: 'Group not found' });
+      if (!group.members.has(userId)) return res.status(400).json({ error: 'You are not a member' });
+      group.members.delete(userId);
+      group.admins.delete(userId);
+      if (group.ownerId === userId) {
+        // передаём владение первому админу или участнику
+        const newOwner = group.admins.values().next().value || [...group.members][0];
+        if (newOwner) group.ownerId = newOwner;
+        else groups.delete(groupId); // если группа пуста, удаляем
+      }
+      saveData();
+      // Уведомить участников об обновлении
+      group.members.forEach(mid => {
+        const sockets = [...io.sockets.sockets.values()].filter(s => s.userId === mid);
+        sockets.forEach(s => s.emit('group-updated', group));
+      });
+      res.json({ success: true });
+    });
+    
+    // Удаление группы (только админ или владелец)
+    app.post('/group/delete', (req, res) => {
+      const { token, groupId } = req.body;
+      const userId = sessions.get(token);
+      if (!userId) return res.status(401).json({ error: 'Unauthorized' });
+      const group = groups.get(groupId);
+      if (!group) return res.status(404).json({ error: 'Group not found' });
+      const user = users.get(userId);
+      if (!group.admins.has(userId) && !(user && user.isSuperAdmin)) {
+        return res.status(403).json({ error: 'Not admin' });
+      }
+      groups.delete(groupId);
+      saveData();
+      // Уведомить бывших участников
+      group.members.forEach(mid => {
+        const sockets = [...io.sockets.sockets.values()].filter(s => s.userId === mid);
+        sockets.forEach(s => s.emit('group-deleted', groupId));
+      });
+      res.json({ success: true });
+    });
+    
+    // Бан пользователя (только суперадмин)
+    app.post('/ban-user', (req, res) => {
+      const { token, userIdToBan } = req.body;
+      const userId = sessions.get(token);
+      if (!userId) return res.status(401).json({ error: 'Unauthorized' });
+      const user = users.get(userId);
+      if (!user || !user.isSuperAdmin) return res.status(403).json({ error: 'Not super admin' });
+      const target = users.get(userIdToBan);
+      if (!target) return res.status(404).json({ error: 'User not found' });
+      target.banned = true;
+      users.set(userIdToBan, target);
+      saveData();
+      // Разорвать все сессии
+      for (let [t, uid] of sessions.entries()) {
+        if (uid === userIdToBan) sessions.delete(t);
+      }
+      res.json({ success: true });
+    });
+    
+    // Разбан
+    app.post('/unban-user', (req, res) => {
+      const { token, userIdToUnban } = req.body;
+      const userId = sessions.get(token);
+      if (!userId) return res.status(401).json({ error: 'Unauthorized' });
+      const user = users.get(userId);
+      if (!user || !user.isSuperAdmin) return res.status(403).json({ error: 'Not super admin' });
+      const target = users.get(userIdToUnban);
+      if (!target) return res.status(404).json({ error: 'User not found' });
+      target.banned = false;
+      users.set(userIdToUnban, target);
+      saveData();
+      res.json({ success: true });
+    });
+    
+    // Проверка бана при логине (добавить в /login)
+    // После проверки пароля, перед выдачей токена:
+    if (user.banned) return res.status(403).json({ error: 'User banned' });
     }
   });
 });
