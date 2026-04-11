@@ -3,10 +3,16 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover, user-scalable=no">
-  <title>SkyMessage — шифрование SkyUltimate</title>
+  <title>SkyMessage — Защищено SkyUltimate</title>
   <style>
     * { box-sizing: border-box; margin: 0; padding: 0; }
-    body { font-family: system-ui, -apple-system, 'Segoe UI', Roboto, sans-serif; background: #0a0a0f; color: #eef; height: 100vh; overflow: hidden; }
+    body {
+      font-family: system-ui, -apple-system, 'Segoe UI', Roboto, sans-serif;
+      background: #0a0a0f;
+      color: #eef;
+      height: 100vh;
+      overflow: hidden;
+    }
     #app { display: flex; height: 100vh; }
     .sidebar { width: 280px; background: #111114; border-right: 1px solid #222; display: flex; flex-direction: column; transition: left 0.2s; }
     .sidebar-header { padding: 16px; border-bottom: 1px solid #222; display: flex; justify-content: space-between; align-items: center; }
@@ -62,6 +68,7 @@
     .logout-btn { background: none; border: none; color: #ff6b6b; cursor: pointer; font-size: 14px; margin-left: 12px; }
     .menu-toggle { display: none; background: none; border: none; color: white; font-size: 24px; cursor: pointer; margin-right: 10px; }
     .close-panel-btn { background: none; border: none; color: white; font-size: 20px; cursor: pointer; }
+    .skyultimate-badge { position: fixed; bottom: 12px; right: 12px; background: rgba(0,0,0,0.5); backdrop-filter: blur(4px); padding: 4px 12px; border-radius: 20px; font-size: 12px; color: #2c6e9e; font-weight: bold; z-index: 999; pointer-events: none; }
     body.mobile-mode .sidebar { position: fixed; left: -280px; z-index: 1000; height: 100%; transition: left 0.2s; }
     body.mobile-mode .sidebar.show { left: 0; }
     body.mobile-mode .members-panel { position: fixed; right: -280px; transition: right 0.2s; }
@@ -129,6 +136,7 @@
     <div id="groupSettings" class="group-settings" style="display: none;"></div>
   </div>
 </div>
+<div class="skyultimate-badge">🔒 Защищено SkyUltimate</div>
 
 <!-- Модальные окна -->
 <div id="loginModal" class="modal"><div class="modal-content"><h3>Вход в SkyMessage</h3><input type="text" id="loginLogin" placeholder="Логин"><div class="password-wrapper"><input type="password" id="loginPassword" placeholder="Пароль"><span class="toggle-password" data-target="loginPassword">👁️</span></div><button id="doLoginBtn">Войти</button><button id="toRegisterBtn">Нет аккаунта? Зарегистрироваться</button></div></div>
@@ -156,120 +164,7 @@
   let channelsCache = {};
   let currentMessages = [];
 
-  // ==================== ШИФРОВАНИЕ SKYULTIMATE ====================
-  const ENCRYPTION_URL = 'https://skyultimate.onrender.com';
-  let rsaKeyPair = null;
-  let symmetricKeys = new Map();
-
-  async function generateRSAKeys() {
-    const key = await crypto.subtle.generateKey(
-      { name: "RSA-OAEP", modulusLength: 4096, publicExponent: new Uint8Array([1,0,1]), hash: "SHA-256" },
-      true,
-      ["encrypt", "decrypt"]
-    );
-    const publicKeyPem = await exportPublicKeyToPem(key.publicKey);
-    return { publicKeyPem, privateKey: key.privateKey };
-  }
-
-  async function exportPublicKeyToPem(key) {
-    const exported = await crypto.subtle.exportKey("spki", key);
-    const base64 = btoa(String.fromCharCode(...new Uint8Array(exported)));
-    return `-----BEGIN PUBLIC KEY-----\n${base64.match(/.{1,64}/g).join('\n')}\n-----END PUBLIC KEY-----`;
-  }
-
-  async function importPublicKeyFromPem(pem) {
-    const pemHeader = "-----BEGIN PUBLIC KEY-----";
-    const pemFooter = "-----END PUBLIC KEY-----";
-    let pemContents = pem.substring(pemHeader.length, pem.length - pemFooter.length);
-    pemContents = pemContents.replace(/\s/g, '');
-    const binaryDer = Uint8Array.from(atob(pemContents), c => c.charCodeAt(0));
-    return await crypto.subtle.importKey("spki", binaryDer, { name: "RSA-OAEP", hash: "SHA-256" }, true, ["encrypt"]);
-  }
-
-  async function encryptWithRSA(plaintext, publicKeyPem) {
-    const publicKey = await importPublicKeyFromPem(publicKeyPem);
-    const encrypted = await crypto.subtle.encrypt({ name: "RSA-OAEP" }, publicKey, new TextEncoder().encode(plaintext));
-    return btoa(String.fromCharCode(...new Uint8Array(encrypted)));
-  }
-
-  async function decryptWithRSA(ciphertextBase64) {
-    if (!rsaKeyPair) throw new Error('No private key');
-    const ciphertext = Uint8Array.from(atob(ciphertextBase64), c => c.charCodeAt(0));
-    const decrypted = await crypto.subtle.decrypt({ name: "RSA-OAEP" }, rsaKeyPair.privateKey, ciphertext);
-    return new TextDecoder().decode(decrypted);
-  }
-
-  async function registerPublicKey(userId, publicKeyPem) {
-    try {
-      const res = await fetch(`${ENCRYPTION_URL}/register-key`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ userId, publicKeyPem })
-      });
-      if (res.ok) console.log('Public key registered');
-      else console.error('Key registration failed', await res.text());
-    } catch(e) { console.error('Key registration error', e); }
-  }
-
-  async function getUserPublicKey(userId) {
-    try {
-      const res = await fetch(`${ENCRYPTION_URL}/get-key/${userId}`);
-      if (!res.ok) throw new Error('Key not found');
-      const data = await res.json();
-      return data.publicKey;
-    } catch(e) {
-      console.warn(`No public key for ${userId}`);
-      return null;
-    }
-  }
-
-  async function generateAESKey() {
-    return await crypto.subtle.generateKey(
-      { name: "AES-GCM", length: 256 },
-      true,
-      ["encrypt", "decrypt"]
-    );
-  }
-
-  async function exportAESKey(key) {
-    const raw = await crypto.subtle.exportKey("raw", key);
-    return btoa(String.fromCharCode(...new Uint8Array(raw)));
-  }
-
-  async function importAESKey(base64Key) {
-    const raw = Uint8Array.from(atob(base64Key), c => c.charCodeAt(0));
-    return await crypto.subtle.importKey("raw", raw, { name: "AES-GCM" }, true, ["encrypt", "decrypt"]);
-  }
-
-  async function aesEncrypt(key, plaintext) {
-    const iv = crypto.getRandomValues(new Uint8Array(12));
-    const encrypted = await crypto.subtle.encrypt(
-      { name: "AES-GCM", iv: iv },
-      key,
-      new TextEncoder().encode(plaintext)
-    );
-    return { iv: btoa(String.fromCharCode(...iv)), ciphertext: btoa(String.fromCharCode(...new Uint8Array(encrypted))) };
-  }
-
-  async function aesDecrypt(key, ivBase64, ciphertextBase64) {
-    try {
-      ivBase64 = ivBase64.trim().replace(/\s/g, '');
-      ciphertextBase64 = ciphertextBase64.trim().replace(/\s/g, '');
-      const iv = Uint8Array.from(atob(ivBase64), c => c.charCodeAt(0));
-      const ciphertext = Uint8Array.from(atob(ciphertextBase64), c => c.charCodeAt(0));
-      const decrypted = await crypto.subtle.decrypt(
-        { name: "AES-GCM", iv: iv },
-        key,
-        ciphertext
-      );
-      return new TextDecoder().decode(decrypted);
-    } catch (e) {
-      console.error('AES decryption error', e);
-      return null;
-    }
-  }
-
-    // ==================== ВСПОМОГАТЕЛЬНЫЕ ФУНКЦИИ ====================
+  // ==================== ВСПОМОГАТЕЛЬНЫЕ ФУНКЦИИ ====================
   function showModal(id) { document.getElementById(id).style.display = 'flex'; }
   function hideModal(id) { document.getElementById(id).style.display = 'none'; }
   function escapeHtml(str) { return String(str).replace(/[&<>]/g, function(m) { if(m==='&') return '&amp;'; if(m==='<') return '&lt;'; if(m==='>') return '&gt;'; return m; }); }
@@ -294,6 +189,7 @@
     document.getElementById('editStatus').value = currentUser.status || '';
   }
 
+  // ==================== API ВЫЗОВЫ ====================
   async function login(login, password) {
     const res = await fetch('/login', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ login, password }) });
     if (!res.ok) { alert('Неверный логин или пароль'); return false; }
@@ -301,10 +197,6 @@
     token = data.token;
     currentUser = data.user;
     localStorage.setItem('token', token);
-    if (!rsaKeyPair) {
-      rsaKeyPair = await generateRSAKeys();
-      await registerPublicKey(currentUser.id, rsaKeyPair.publicKeyPem);
-    }
     connectSocket();
     updateProfileUI();
     loadConversations();
@@ -327,10 +219,6 @@
     if (res.ok) {
       const user = await res.json();
       currentUser = user;
-      if (!rsaKeyPair) {
-        rsaKeyPair = await generateRSAKeys();
-        await registerPublicKey(currentUser.id, rsaKeyPair.publicKeyPem);
-      }
       updateProfileUI();
       return user;
     } else {
@@ -340,35 +228,20 @@
     }
   }
 
+    // ==================== SOCKET.IO ====================
   function connectSocket() {
     if (socket) socket.disconnect();
     socket = io({ auth: { token } });
     socket.on('connect', () => console.log('Socket connected'));
     socket.on('conversations', (convs) => renderConversations(convs));
     socket.on('new-message', ({ convId, message }) => {
-      if (message.type === 'key') {
-        if (message.senderId !== currentUser.id) {
-          (async () => {
-            try {
-              const decryptedKeyBase64 = await decryptWithRSA(message.content);
-              const aesKey = await importAESKey(decryptedKeyBase64);
-              symmetricKeys.set(message.senderId, aesKey);
-              console.log('AES key received');
-              if (currentConvId === convId) {
-                appendMessage({ id: Date.now(), senderId: message.senderId, type: 'text', content: '🔑 Ключ шифрования установлен', timestamp: Date.now() }, false);
-              }
-            } catch(e) { console.error('Failed to decrypt key', e); }
-          })();
-        }
-        return;
-      }
       if (currentConvId === convId) {
         currentMessages.push(message);
         appendMessage(message, message.senderId === currentUser.id);
       }
       if (currentConvId !== convId && message.senderId !== currentUser.id) {
         const sender = usersCache[message.senderId] || { displayName: 'Кто-то' };
-        showNotification(`Новое сообщение от ${sender.displayName}`, message.type === 'text' ? (message.content.startsWith('🔒') ? '🔒 Зашифрованное сообщение' : message.content) : '📎 Файл');
+        showNotification(`Новое сообщение от ${sender.displayName}`, message.type === 'text' ? message.content : '📎 Файл');
       }
       loadConversations();
     });
@@ -431,7 +304,6 @@
       let lastMsgText = '';
       if (conv.lastMessage) {
         if (conv.lastMessage.type === 'file') lastMsgText = '📎 Файл';
-        else if (conv.lastMessage.content && conv.lastMessage.content.startsWith('🔒')) lastMsgText = '🔒 Зашифрованное сообщение';
         else lastMsgText = conv.lastMessage.content;
       }
       div.innerHTML = '<img class="conv-avatar" src="' + (conv.avatar || '') + '">' +
@@ -453,17 +325,6 @@
     if (conv.type === 'private') {
       const otherId = conv.id.split('_').find(id => id !== currentUser.id);
       updateUserStatusIndicator(otherId);
-      if (!symmetricKeys.has(otherId)) {
-        const publicKeyPem = await getUserPublicKey(otherId);
-        if (publicKeyPem) {
-          const aesKey = await generateAESKey();
-          const exportedKey = await exportAESKey(aesKey);
-          const encryptedKey = await encryptWithRSA(exportedKey, publicKeyPem);
-          socket.emit('send-message', { convId: conv.id, type: 'key', content: encryptedKey });
-          symmetricKeys.set(otherId, aesKey);
-          console.log('AES key sent');
-        }
-      }
     } else {
       document.getElementById('chatUserStatus').innerText = '';
     }
@@ -645,33 +506,7 @@
     const senderHtml = `<div class="message-sender" onclick="showUserProfile('${msg.senderId}')">${isOwn ? 'Вы' : escapeHtml(sender.displayName)}</div>`;
     let contentHtml = '';
     if (msg.type === 'text') {
-      let displayText = msg.content;
-      const isEncrypted = typeof displayText === 'string' && displayText.startsWith('🔒');
-      if (isEncrypted) {
-        const parts = displayText.slice(1).split('|');
-        if (parts.length === 2 && symmetricKeys.has(msg.senderId)) {
-          const aesKey = symmetricKeys.get(msg.senderId);
-          (async () => {
-            try {
-              const plain = await aesDecrypt(aesKey, parts[0], parts[1]);
-              if (plain !== null) {
-                const textDiv = document.querySelector(`#msg-${msg.id} .message-text`);
-                if (textDiv) textDiv.innerText = plain;
-              } else {
-                throw new Error('Decryption returned null');
-              }
-            } catch(e) {
-              console.error('Decryption failed', e);
-              const textDiv = document.querySelector(`#msg-${msg.id} .message-text`);
-              if (textDiv) textDiv.innerText = '🔒 Ошибка расшифровки';
-            }
-          })();
-          displayText = '🔒 Зашифрованное сообщение...';
-        } else {
-          displayText = '🔒 Не удалось расшифровать (нет ключа)';
-        }
-      }
-      contentHtml = `<div class="message-text" id="msg-${msg.id}">${escapeHtml(displayText)}</div>`;
+      contentHtml = `<div class="message-text" id="msg-${msg.id}">${escapeHtml(msg.content)}</div>`;
     } else if (msg.type === 'file') {
       const file = msg.content;
       if (file.type.startsWith('image/')) {
@@ -722,24 +557,12 @@
       };
       reader.readAsDataURL(file);
     } else if (text.trim()) {
-      let finalContent = text.trim();
-      if (currentConvType === 'private') {
-        const otherId = currentConvId.split('_').find(id => id !== currentUser.id);
-        const aesKey = symmetricKeys.get(otherId);
-        if (aesKey) {
-          try {
-            const encrypted = await aesEncrypt(aesKey, text.trim());
-            finalContent = '🔒' + encrypted.iv + '|' + encrypted.ciphertext;
-          } catch(e) { console.error('Encryption failed', e); }
-        } else {
-          console.warn('No AES key yet, sending unencrypted');
-        }
-      }
-      socket.emit('send-message', { convId: currentConvId, type: 'text', content: finalContent });
+      socket.emit('send-message', { convId: currentConvId, type: 'text', content: text.trim() });
       document.getElementById('messageInput').value = '';
     }
   }
 
+  // ==================== СТАТУСЫ И ИНДИКАТОРЫ ====================
   function updateUserStatusIndicator(userId) {
     const user = usersCache[userId];
     if (!user) return;
@@ -772,6 +595,7 @@
     }
   }, 30000);
 
+  // ==================== ЗВОНКИ (WebRTC) ====================
   async function startCall(targetUserId, callType, isAnswer = false, offer = null) {
     if (currentCall.active) return;
     console.log(`[Call] startCall target=${targetUserId}, type=${callType}, isAnswer=${isAnswer}`);
@@ -851,6 +675,7 @@
     document.getElementById(type === 'audio' ? 'toggleMicBtn' : 'toggleCamBtn').innerText = type === 'audio' ? (enabled ? '🎤 Выкл' : '🎤 Вкл') : (enabled ? '📷 Выкл' : '📷 Вкл');
   }
 
+  // ==================== UI ОБРАБОТЧИКИ ====================
   document.getElementById('sendBtn').onclick = () => sendMessage(document.getElementById('messageInput').value);
   document.getElementById('messageInput').addEventListener('keypress', (e) => { if (e.key === 'Enter') sendMessage(e.target.value); });
   document.getElementById('fileInput').onchange = (e) => { if (e.target.files[0]) sendMessage('', e.target.files[0]); e.target.value = ''; };
@@ -951,6 +776,7 @@
     }
   };
 
+  // ==================== ПОИСК ПОЛЬЗОВАТЕЛЕЙ, ГРУПП, КАНАЛОВ ====================
   let searchTimeout;
   document.getElementById('searchUsersInput').addEventListener('input', async (e) => {
     clearTimeout(searchTimeout);
@@ -1039,6 +865,7 @@
     }, 300);
   });
 
+  // ==================== МОБИЛЬНЫЙ РЕЖИМ ====================
   function setMobileByWidth() {
     if (window.innerWidth <= 768) {
       if (!document.body.classList.contains('mobile-mode')) {
@@ -1072,6 +899,7 @@
     setMobileByWidth();
   };
 
+  // ==================== ПОКАЗ ПАРОЛЯ ====================
   document.querySelectorAll('.toggle-password').forEach(span => {
     span.addEventListener('click', function() {
       const targetId = this.dataset.target;
@@ -1086,12 +914,14 @@
     });
   });
 
+  // ==================== АВТОРИЗАЦИЯ ====================
   document.getElementById('doLoginBtn').onclick = () => login(document.getElementById('loginLogin').value, document.getElementById('loginPassword').value);
   document.getElementById('toRegisterBtn').onclick = () => { hideModal('loginModal'); showModal('registerModal'); };
   document.getElementById('doRegisterBtn').onclick = () => register(document.getElementById('regLogin').value, document.getElementById('regPassword').value, document.getElementById('regDisplayName').value);
   document.getElementById('toLoginBtn').onclick = () => { hideModal('registerModal'); showModal('loginModal'); };
   document.getElementById('logoutBtn').onclick = () => { localStorage.removeItem('token'); token = null; if (socket) socket.disconnect(); currentUser = null; showModal('loginModal'); };
 
+  // ==================== ИНИЦИАЛИЗАЦИЯ ====================
   (async () => {
     if (token) {
       const user = await loadCurrentUser();
