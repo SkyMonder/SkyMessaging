@@ -192,6 +192,11 @@ app.get('/search-groups', (req, res) => {
   res.json(formatted);
 });
 
+// Health check endpoint для cron job (лёгкий, обрабатывает множество запросов)
+app.get('/healthz', (req, res) => {
+  res.status(200).send('OK');
+});
+
 app.get('/search-channels', (req, res) => {
   const token = req.headers.authorization?.split(' ')[1];
   const userId = sessions.get(token);
