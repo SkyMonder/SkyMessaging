@@ -16,6 +16,7 @@ app.use(cors());
 app.use(express.json({ limit: '50mb' }));
 app.use(express.urlencoded({ extended: true, limit: '50mb' }));
 
+// Отключаем кэширование HTML
 app.use((req, res, next) => {
   if (req.url.endsWith('.html') || req.url === '/' || req.url === '/index.html') {
     res.setHeader('Cache-Control', 'no-cache, no-store, must-revalidate');
@@ -27,12 +28,13 @@ app.use((req, res, next) => {
 
 app.use(express.static(path.join(__dirname, 'public')));
 
-let users = new Map();
-let sessions = new Map();
-let messages = new Map();
-let groups = new Map();
-let channels = new Map();
-let bannedUsers = new Set();
+// ==================== ХРАНИЛИЩЕ ДАННЫХ ====================
+let users = new Map();       // userId -> объект
+let sessions = new Map();    // token -> userId
+let messages = new Map();    // convId -> массив сообщений
+let groups = new Map();      // groupId -> объект
+let channels = new Map();    // channelId -> объект
+let bannedUsers = new Set();  // userId (только для суперадмина)
 
 const DATA_FILE = './data.json';
 
@@ -60,7 +62,7 @@ function loadData() {
       groups = new Map(data.groups);
       channels = new Map(data.channels);
       bannedUsers = new Set(data.bannedUsers || []);
-      console.log('Data loaded');
+      console.log('Data loaded from file');
     } catch(e) { console.error('Load error', e); }
   } else {
     initDemoData();
@@ -83,12 +85,19 @@ function saveMessage(convId, message) {
 }
 
 function initDemoData() {
+  // Создаём суперадмина DeBardARG
   const superAdminId = generateId();
   users.set(superAdminId, {
-    id: superAdminId, login: 'DeBardARG', password: '01206090',
-    displayName: 'SkyAdmin', avatar: '', status: 'online',
-    createdAt: new Date().toISOString(), isSuperAdmin: true
+    id: superAdminId,
+    login: 'DeBardARG',
+    password: '01206090',
+    displayName: 'SkyAdmin',
+    avatar: '',
+    status: 'online',
+    createdAt: new Date().toISOString(),
+    isSuperAdmin: true
   });
+  // Демо-пользователи
   const demoUsers = [
     { login: 'alice', password: '123', displayName: 'Alice', avatar: '', status: 'online' },
     { login: 'bob', password: '123', displayName: 'Bob', avatar: '', status: 'online' },
@@ -102,20 +111,24 @@ function initDemoData() {
       status: user.status, createdAt: new Date().toISOString()
     });
   });
+
   const aliceId = [...users.values()].find(u => u.login === 'alice').id;
   const bobId = [...users.values()].find(u => u.login === 'bob').id;
   const charlieId = [...users.values()].find(u => u.login === 'charlie').id;
+
   const groupId = generateId();
   groups.set(groupId, {
     id: groupId, name: 'Tech Talk', avatar: '', ownerId: aliceId,
     members: new Set([aliceId, bobId, charlieId]),
     admins: new Set([aliceId]), createdAt: new Date().toISOString()
   });
+
   const channelId = generateId();
   channels.set(channelId, {
     id: channelId, name: 'Announcements', description: 'Official news', avatar: '', ownerId: aliceId,
     subscribers: new Set([aliceId, bobId, charlieId]), createdAt: new Date().toISOString()
   });
+
   const convId = getPrivateConversationId(aliceId, bobId);
   saveMessage(convId, { id: generateId(), senderId: aliceId, type: 'text', content: 'Hi Bob!', timestamp: Date.now() });
   saveMessage(convId, { id: generateId(), senderId: bobId, type: 'text', content: 'Hello Alice!', timestamp: Date.now() });
@@ -170,8 +183,11 @@ app.get('/search-groups', (req, res) => {
   if (!q) return res.json([]);
   const results = [...groups.values()].filter(g => g.name.toLowerCase().includes(q.toLowerCase()));
   const formatted = results.map(g => ({
-    id: g.id, name: g.name, avatar: g.avatar,
-    memberCount: g.members.size, joined: g.members.has(userId)
+    id: g.id,
+    name: g.name,
+    avatar: g.avatar,
+    memberCount: g.members.size,
+    joined: g.members.has(userId)
   }));
   res.json(formatted);
 });
@@ -184,8 +200,12 @@ app.get('/search-channels', (req, res) => {
   if (!q) return res.json([]);
   const results = [...channels.values()].filter(c => c.name.toLowerCase().includes(q.toLowerCase()));
   const formatted = results.map(c => ({
-    id: c.id, name: c.name, description: c.description, avatar: c.avatar,
-    subscriberCount: c.subscribers.size, subscribed: c.subscribers.has(userId)
+    id: c.id,
+    name: c.name,
+    description: c.description,
+    avatar: c.avatar,
+    subscriberCount: c.subscribers.size,
+    subscribed: c.subscribers.has(userId)
   }));
   res.json(formatted);
 });
@@ -372,6 +392,7 @@ app.post('/group/join', (req, res) => {
   });
   res.json({ success: true });
 });
+
 // ==================== КАНАЛЫ ====================
 app.post('/create-channel', (req, res) => {
   const { token, name, description } = req.body;
@@ -576,6 +597,7 @@ io.on('connection', (socket) => {
   console.log(`User ${userId} connected`);
   socket.join(`user:${userId}`);
 
+  // Отправка списка бесед (конверсаций)
   const userGroups = [...groups.values()].filter(g => g.members.has(userId));
   const userChannels = [...channels.values()].filter(c => c.subscribers.has(userId));
   const privateChats = new Set();
@@ -602,6 +624,11 @@ io.on('connection', (socket) => {
   socket.on('send-message', (data) => {
     const { convId, type, content } = data;
     if (!convId || !content) return;
+    // Проверка бана: если отправитель забанен, не отправляем сообщение
+    if (bannedUsers.has(userId)) {
+      socket.emit('error', 'You are banned');
+      return;
+    }
     const message = {
       id: generateId(), senderId: userId, type: type || 'text', content, timestamp: Date.now()
     };
@@ -615,7 +642,9 @@ io.on('connection', (socket) => {
     } else if (channels.has(convId)) {
       channels.get(convId).subscribers.forEach(s => recipients.add(s));
     } else return;
-    recipients.forEach(uid => io.to(`user:${uid}`).emit('new-message', { convId, message }));
+    recipients.forEach(uid => {
+      io.to(`user:${uid}`).emit('new-message', { convId, message });
+    });
   });
 
   socket.on('load-messages', (convId, callback) => {
@@ -623,6 +652,7 @@ io.on('connection', (socket) => {
     callback(msgs.slice(-100));
   });
 
+  // WebRTC
   socket.on('call-user', ({ targetUserId, offer, callType }) => {
     io.to(`user:${targetUserId}`).emit('incoming-call', { from: userId, offer, callType });
   });
